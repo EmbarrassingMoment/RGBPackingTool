@@ -1,0 +1,24 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "Texture Channel Packer",
+  "Description": "A tool to pack texture channels.",
+  "Category": "Editor",
+  "CreatedBy": "Jules",
+  "CreatedByURL": "",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "CanContainContent": false,
+  "IsBetaVersion": true,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "TextureChannelPacker",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}
