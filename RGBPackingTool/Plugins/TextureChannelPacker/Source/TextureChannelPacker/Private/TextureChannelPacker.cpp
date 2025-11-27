@@ -5,6 +5,8 @@
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
 #include "Logging/LogMacros.h"
+#include "PropertyCustomizationHelpers.h"
+#include "Engine/Texture2D.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -58,9 +60,103 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
     return SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         [
-            SNew(STextBlock)
-            .Text(LOCTEXT("WindowWidgetText", "Texture Packer UI Placeholder"))
-            .Justification(ETextJustify::Center)
+            SNew(SVerticalBox)
+
+            // Red Channel Input
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("RedChannelLabel", "Red Channel Input"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SObjectPropertyEntryBox)
+                    .AllowedClass(UTexture2D::StaticClass())
+                    .ObjectPath_Lambda([this]()
+                    {
+                        return InputTextureR.IsValid() ? InputTextureR->GetPathName() : FString();
+                    })
+                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
+                    {
+                        InputTextureR = Cast<UTexture2D>(AssetData.GetAsset());
+                    })
+                    .AllowClear(true)
+                    .DisplayThumbnail(true)
+                ]
+            ]
+
+            // Green Channel Input
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("GreenChannelLabel", "Green Channel Input"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SObjectPropertyEntryBox)
+                    .AllowedClass(UTexture2D::StaticClass())
+                    .ObjectPath_Lambda([this]()
+                    {
+                        return InputTextureG.IsValid() ? InputTextureG->GetPathName() : FString();
+                    })
+                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
+                    {
+                        InputTextureG = Cast<UTexture2D>(AssetData.GetAsset());
+                    })
+                    .AllowClear(true)
+                    .DisplayThumbnail(true)
+                ]
+            ]
+
+            // Blue Channel Input
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("BlueChannelLabel", "Blue Channel Input"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SObjectPropertyEntryBox)
+                    .AllowedClass(UTexture2D::StaticClass())
+                    .ObjectPath_Lambda([this]()
+                    {
+                        return InputTextureB.IsValid() ? InputTextureB->GetPathName() : FString();
+                    })
+                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
+                    {
+                        InputTextureB = Cast<UTexture2D>(AssetData.GetAsset());
+                    })
+                    .AllowClear(true)
+                    .DisplayThumbnail(true)
+                ]
+            ]
         ];
 }
 

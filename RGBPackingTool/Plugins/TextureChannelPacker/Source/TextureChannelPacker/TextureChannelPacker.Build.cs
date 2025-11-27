@@ -35,7 +35,8 @@ public class TextureChannelPacker : ModuleRules
                 "SlateCore",
                 "InputCore",
                 "UnrealEd",
-                "ToolMenus"
+                "ToolMenus",
+                "PropertyEditor"
                 // ... add private dependencies that you statically link with here ...
             }
         );
