@@ -355,20 +355,8 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     else
     {
-        // For other formats, try to handle RGBA8 if encountered, otherwise log warning.
-        if (SrcFormat == TSF_RGBA8)
-        {
-            const uint8* RGBAData = SrcData;
-            for (int32 i = 0; i < NumPixels; ++i)
-            {
-                SrcColors[i] = FColor(RGBAData[i * 4 + 0], RGBAData[i * 4 + 1], RGBAData[i * 4 + 2], RGBAData[i * 4 + 3]);
-            }
-        }
-        else
-        {
-            UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
-            FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
-        }
+        UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
+        FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
     }
 
     SourceTex->Source.UnlockMip(0);
