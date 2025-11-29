@@ -274,7 +274,10 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .HAlign(HAlign_Center)
                 .VAlign(VAlign_Center)
                 .ContentPadding(FMargin(0.0f, 10.0f))
-                .OnClicked(this, &FTextureChannelPackerModule::OnGenerateClicked)
+                .OnClicked_Lambda([this]()
+                {
+                    return OnGenerateClicked();
+                })
                 [
                     SNew(STextBlock)
                     .Text(LOCTEXT("GenerateButtonText", "Generate Texture"))
