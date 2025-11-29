@@ -14,6 +14,7 @@
 #include "Engine/Texture2D.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
+#include "ImageUtils.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -309,6 +310,98 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     return FReply::Handled();
 }
 
+// Helper function to read and resize texture data
+static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
+{
+    TArray<uint8> ResultData;
+    ResultData.Init(0, TargetSize * TargetSize * 4); // RGBA (4 bytes per pixel)
+
+    if (!SourceTex)
+    {
+        return ResultData;
+    }
+
+#if WITH_EDITORONLY_DATA
+    // Access Source Data
+    int32 SrcWidth = SourceTex->Source.GetSizeX();
+    int32 SrcHeight = SourceTex->Source.GetSizeY();
+    ETextureSourceFormat SrcFormat = SourceTex->Source.GetFormat();
+
+    // Lock Mip 0
+    uint8* SrcData = SourceTex->Source.LockMip(0);
+    if (!SrcData)
+    {
+        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
+        return ResultData;
+    }
+
+    int32 NumPixels = SrcWidth * SrcHeight;
+    TArray<FColor> SrcColors;
+    SrcColors.SetNumUninitialized(NumPixels);
+
+    // Convert input to FColor (BGRA)
+    if (SrcFormat == TSF_BGRA8)
+    {
+        FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
+    }
+    else if (SrcFormat == TSF_G8)
+    {
+        const uint8* GrayData = SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = GrayData[i];
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+    }
+    else
+    {
+        // For other formats, try to handle RGBA8 if encountered, otherwise log warning.
+        if (SrcFormat == TSF_RGBA8)
+        {
+            const uint8* RGBAData = SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                SrcColors[i] = FColor(RGBAData[i * 4 + 0], RGBAData[i * 4 + 1], RGBAData[i * 4 + 2], RGBAData[i * 4 + 3]);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
+            FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
+        }
+    }
+
+    SourceTex->Source.UnlockMip(0);
+
+    // Resize if necessary
+    TArray<FColor> ResizedColors;
+    if (SrcWidth != TargetSize || SrcHeight != TargetSize)
+    {
+        ResizedColors.SetNum(TargetSize * TargetSize);
+        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, false);
+    }
+    else
+    {
+        ResizedColors = SrcColors;
+    }
+
+    // Convert FColor (BGRA) to RGBA uint8 array
+    uint8* DestData = ResultData.GetData();
+    for (int32 i = 0; i < TargetSize * TargetSize; ++i)
+    {
+        const FColor& C = ResizedColors[i];
+        DestData[i * 4 + 0] = C.R;
+        DestData[i * 4 + 1] = C.G;
+        DestData[i * 4 + 2] = C.B;
+        DestData[i * 4 + 3] = C.A;
+    }
+#else
+    UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+#endif
+
+    return ResultData;
+}
+
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
 {
     // Create the package
@@ -331,17 +424,31 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     Mip->SizeX = Resolution;
     Mip->SizeY = Resolution;
 
+    // Get Resized Data for Inputs
+    TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
+    TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
+    TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+
     // Lock and Write Pixels
     Mip->BulkData.Lock(LOCK_READ_WRITE);
     uint8* TextureData = (uint8*)Mip->BulkData.Realloc(Resolution * Resolution * 4);
 
     for (int32 i = 0; i < Resolution * Resolution; ++i)
     {
-        // BGRA
-        TextureData[i * 4 + 0] = 0;   // B
-        TextureData[i * 4 + 1] = 0;   // G
-        TextureData[i * 4 + 2] = 255; // R
-        TextureData[i * 4 + 3] = 255; // A
+        // Each Data array is RGBA.
+        // New.R = InputR_Data[i].R (Byte 0)
+        // New.G = InputG_Data[i].R (Byte 0)
+        // New.B = InputB_Data[i].R (Byte 0)
+
+        uint8 R_Val = DataR[i * 4 + 0];
+        uint8 G_Val = DataG[i * 4 + 0];
+        uint8 B_Val = DataB[i * 4 + 0];
+
+        // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
+        TextureData[i * 4 + 0] = B_Val; // B
+        TextureData[i * 4 + 1] = G_Val; // G
+        TextureData[i * 4 + 2] = R_Val; // R
+        TextureData[i * 4 + 3] = 255;   // A
     }
 
     Mip->BulkData.Unlock();
@@ -349,6 +456,12 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     // Assign PlatformData
 #if WITH_EDITORONLY_DATA
     NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+    uint8* NewSourceData = NewTexture->Source.LockMip(0);
+    if (NewSourceData)
+    {
+        FMemory::Memcpy(NewSourceData, TextureData, Resolution * Resolution * 4);
+    }
+    NewTexture->Source.UnlockMip(0);
 #endif
     NewTexture->SetPlatformData(PlatformData);
 
