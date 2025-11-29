@@ -12,6 +12,8 @@
 #include "Logging/LogMacros.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Engine/Texture2D.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -292,7 +294,68 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
 
+    FString PackageName = OutputPackagePath;
+    if (!PackageName.EndsWith(TEXT("/")))
+    {
+        PackageName += TEXT("/");
+    }
+    PackageName += OutputFileName;
+
+    CreateTexture(PackageName, TargetResolution);
+
     return FReply::Handled();
+}
+
+void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
+{
+    // Create the package
+    UPackage* Package = CreatePackage(*PackageName);
+    Package->FullyLoad();
+
+    // Create the Texture2D
+    FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
+    UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
+
+    // Initialize PlatformData
+    FTexturePlatformData* PlatformData = new FTexturePlatformData();
+    PlatformData->SizeX = Resolution;
+    PlatformData->SizeY = Resolution;
+    PlatformData->PixelFormat = PF_B8G8R8A8;
+
+    // Allocate Mip
+    FTexture2DMipMap* Mip = new FTexture2DMipMap();
+    PlatformData->Mips.Add(Mip);
+    Mip->SizeX = Resolution;
+    Mip->SizeY = Resolution;
+
+    // Lock and Write Pixels
+    Mip->BulkData.Lock(LOCK_READ_WRITE);
+    uint8* TextureData = (uint8*)Mip->BulkData.Realloc(Resolution * Resolution * 4);
+
+    for (int32 i = 0; i < Resolution * Resolution; ++i)
+    {
+        // BGRA
+        TextureData[i * 4 + 0] = 0;   // B
+        TextureData[i * 4 + 1] = 0;   // G
+        TextureData[i * 4 + 2] = 255; // R
+        TextureData[i * 4 + 3] = 255; // A
+    }
+
+    Mip->BulkData.Unlock();
+
+    // Assign PlatformData
+#if WITH_EDITORONLY_DATA
+    NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+#endif
+    NewTexture->SetPlatformData(PlatformData);
+
+    // Final settings
+    NewTexture->CompressionSettings = TC_Masks;
+    NewTexture->SRGB = false;
+    NewTexture->UpdateResource();
+
+    Package->MarkPackageDirty();
+    FAssetRegistryModule::AssetCreated(NewTexture);
 }
 
 #undef LOCTEXT_NAMESPACE

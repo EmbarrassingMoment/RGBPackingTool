@@ -31,4 +31,7 @@ private:
 
     /** Callback for Generate button */
     FReply OnGenerateClicked();
+
+    /** Helper function to create the texture asset */
+    void CreateTexture(const FString& PackageName, int32 Resolution);
 };
