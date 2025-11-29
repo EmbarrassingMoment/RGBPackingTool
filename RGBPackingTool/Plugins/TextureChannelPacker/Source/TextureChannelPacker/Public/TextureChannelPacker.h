@@ -23,6 +23,7 @@ private:
     TWeakObjectPtr<UTexture2D> InputTextureR;
     TWeakObjectPtr<UTexture2D> InputTextureG;
     TWeakObjectPtr<UTexture2D> InputTextureB;
+    TWeakObjectPtr<UTexture2D> InputTextureA;
 
     /** Output Settings */
     FString OutputPackagePath = "/Game/Textures/Packed/";

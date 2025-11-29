@@ -166,6 +166,38 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 ]
             ]
 
+            // Alpha Channel Input
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("AlphaChannelLabel", "Alpha Channel Input"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SObjectPropertyEntryBox)
+                    .AllowedClass(UTexture2D::StaticClass())
+                    .ObjectPath_Lambda([this]()
+                    {
+                        return InputTextureA.IsValid() ? InputTextureA->GetPathName() : FString();
+                    })
+                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
+                    {
+                        InputTextureA = Cast<UTexture2D>(AssetData.GetAsset());
+                    })
+                    .AllowClear(true)
+                    .DisplayThumbnail(true)
+                ]
+            ]
+
             // Separator
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -294,6 +326,7 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     UE_LOG(LogTexturePacker, Log, TEXT("Input Red: %s"), InputTextureR.IsValid() ? *InputTextureR->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Input Green: %s"), InputTextureG.IsValid() ? *InputTextureG->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Input Blue: %s"), InputTextureB.IsValid() ? *InputTextureB->GetPathName() : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Input Alpha: %s"), InputTextureA.IsValid() ? *InputTextureA->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d"), TargetResolution);
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
@@ -416,6 +449,9 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
     TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
     TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+    TArray<uint8> DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
+
+    bool bHasAlpha = InputTextureA.IsValid();
 
     // Lock and Write Pixels
     Mip->BulkData.Lock(LOCK_READ_WRITE);
@@ -431,12 +467,13 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         uint8 R_Val = DataR[i * 4 + 0];
         uint8 G_Val = DataG[i * 4 + 0];
         uint8 B_Val = DataB[i * 4 + 0];
+        uint8 A_Val = bHasAlpha ? DataA[i * 4 + 0] : 255; // Use Red channel of Alpha input, or 255
 
         // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
         TextureData[i * 4 + 0] = B_Val; // B
         TextureData[i * 4 + 1] = G_Val; // G
         TextureData[i * 4 + 2] = R_Val; // R
-        TextureData[i * 4 + 3] = 255;   // A
+        TextureData[i * 4 + 3] = A_Val; // A
     }
 
     Mip->BulkData.Unlock();
