@@ -36,7 +36,10 @@ public class TextureChannelPacker : ModuleRules
                 "InputCore",
                 "UnrealEd",
                 "ToolMenus",
-                "PropertyEditor"
+                "PropertyEditor",
+                "ImageCore",
+                "RenderCore",
+                "AssetRegistry"
                 // ... add private dependencies that you statically link with here ...
             }
         );
