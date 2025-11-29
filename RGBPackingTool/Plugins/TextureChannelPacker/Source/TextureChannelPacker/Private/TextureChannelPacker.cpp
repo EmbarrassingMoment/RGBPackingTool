@@ -2,6 +2,11 @@
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SNumericEntryBox.h"
+#include "Widgets/Layout/SSeparator.h"
+#include "Widgets/Layout/SSpacer.h"
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
 #include "Logging/LogMacros.h"
@@ -157,7 +162,137 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .DisplayThumbnail(true)
                 ]
             ]
+
+            // Separator
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SSeparator)
+            ]
+
+            // Output Settings Header
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("OutputSettingsLabel", "Output Settings"))
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+            ]
+
+            // Resolution
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("ResolutionLabel", "Resolution (e.g. 2048)"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SNumericEntryBox<int32>)
+                    .Value_Lambda([this] { return TargetResolution; })
+                    .OnValueChanged_Lambda([this](int32 NewValue) { TargetResolution = NewValue; })
+                    .AllowSpin(true)
+                    .MinSliderValue(1)
+                    .MaxSliderValue(8192)
+                ]
+            ]
+
+            // Output Path
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("OutputPathLabel", "Output Path (e.g. /Game/...)"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SEditableTextBox)
+                    .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
+                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
+                ]
+            ]
+
+            // File Name
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FileNameLabel", "File Name"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SEditableTextBox)
+                    .Text_Lambda([this] { return FText::FromString(OutputFileName); })
+                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputFileName = NewText.ToString(); })
+                ]
+            ]
+
+            // Spacer
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SSpacer)
+                .Size(FVector2D(0.0f, 10.0f))
+            ]
+
+            // Generate Button
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(20.0f)
+            .HAlign(HAlign_Fill)
+            [
+                SNew(SButton)
+                .HAlign(HAlign_Center)
+                .VAlign(VAlign_Center)
+                .ContentPadding(FMargin(0.0f, 10.0f))
+                .OnClicked(this, &FTextureChannelPackerModule::OnGenerateClicked)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("GenerateButtonText", "Generate Texture"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+                ]
+            ]
         ];
+}
+
+FReply FTextureChannelPackerModule::OnGenerateClicked()
+{
+    UE_LOG(LogTexturePacker, Log, TEXT("Generating Texture..."));
+    UE_LOG(LogTexturePacker, Log, TEXT("Input Red: %s"), InputTextureR.IsValid() ? *InputTextureR->GetPathName() : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Input Green: %s"), InputTextureG.IsValid() ? *InputTextureG->GetPathName() : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Input Blue: %s"), InputTextureB.IsValid() ? *InputTextureB->GetPathName() : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d"), TargetResolution);
+    UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
+    UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
+
+    return FReply::Handled();
 }
 
 #undef LOCTEXT_NAMESPACE

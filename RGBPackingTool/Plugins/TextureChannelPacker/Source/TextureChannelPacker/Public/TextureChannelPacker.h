@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "Input/Reply.h"
 
 class SDockTab;
 class FSpawnTabArgs;
@@ -22,4 +23,12 @@ private:
     TWeakObjectPtr<UTexture2D> InputTextureR;
     TWeakObjectPtr<UTexture2D> InputTextureG;
     TWeakObjectPtr<UTexture2D> InputTextureB;
+
+    /** Output Settings */
+    FString OutputPackagePath = "/Game/Textures/Packed/";
+    FString OutputFileName = "T_Packed_Texture";
+    int32 TargetResolution = 2048;
+
+    /** Callback for Generate button */
+    FReply OnGenerateClicked();
 };
