@@ -274,7 +274,10 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .HAlign(HAlign_Center)
                 .VAlign(VAlign_Center)
                 .ContentPadding(FMargin(0.0f, 10.0f))
-                .OnClicked(this, &FTextureChannelPackerModule::OnGenerateClicked)
+                .OnClicked_Lambda([this]()
+                {
+                    return OnGenerateClicked();
+                })
                 [
                     SNew(STextBlock)
                     .Text(LOCTEXT("GenerateButtonText", "Generate Texture"))
@@ -317,14 +320,14 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
     // Initialize PlatformData
-    NewTexture->PlatformData = new FTexturePlatformData();
-    NewTexture->PlatformData->SizeX = Resolution;
-    NewTexture->PlatformData->SizeY = Resolution;
-    NewTexture->PlatformData->PixelFormat = PF_B8G8R8A8;
+    FTexturePlatformData* PlatformData = new FTexturePlatformData();
+    PlatformData->SizeX = Resolution;
+    PlatformData->SizeY = Resolution;
+    PlatformData->PixelFormat = PF_B8G8R8A8;
 
     // Allocate Mip
     FTexture2DMipMap* Mip = new FTexture2DMipMap();
-    NewTexture->PlatformData->Mips.Add(Mip);
+    PlatformData->Mips.Add(Mip);
     Mip->SizeX = Resolution;
     Mip->SizeY = Resolution;
 
@@ -342,6 +345,12 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     }
 
     Mip->BulkData.Unlock();
+
+    // Assign PlatformData
+#if WITH_EDITORONLY_DATA
+    NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+#endif
+    NewTexture->SetPlatformData(PlatformData);
 
     // Final settings
     NewTexture->CompressionSettings = TC_Masks;
