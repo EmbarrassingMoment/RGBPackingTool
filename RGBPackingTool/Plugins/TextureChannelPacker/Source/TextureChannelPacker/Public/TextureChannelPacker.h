@@ -35,4 +35,7 @@ private:
 
     /** Helper function to create the texture asset */
     void CreateTexture(const FString& PackageName, int32 Resolution);
+
+    /** Helper function to show notifications */
+    void ShowNotification(const FText& Message, bool bSuccess);
 };

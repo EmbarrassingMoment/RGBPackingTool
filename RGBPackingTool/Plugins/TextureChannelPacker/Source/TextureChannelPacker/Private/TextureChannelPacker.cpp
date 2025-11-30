@@ -8,6 +8,8 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Framework/Docking/TabManager.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Styling/AppStyle.h"
 #include "Logging/LogMacros.h"
 #include "PropertyCustomizationHelpers.h"
@@ -331,6 +333,20 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
 
+    // Validation Check 1: At least one input texture
+    if (!InputTextureR.IsValid() && !InputTextureG.IsValid() && !InputTextureB.IsValid() && !InputTextureA.IsValid())
+    {
+        ShowNotification(LOCTEXT("ErrorNoTextures", "Please select at least one input texture."), false);
+        return FReply::Handled();
+    }
+
+    // Validation Check 2: Output filename is not empty
+    if (OutputFileName.IsEmpty())
+    {
+        ShowNotification(LOCTEXT("ErrorNoFileName", "Please specify a file name."), false);
+        return FReply::Handled();
+    }
+
     FString PackageName = OutputPackagePath;
     if (!PackageName.EndsWith(TEXT("/")))
     {
@@ -497,6 +513,30 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(NewTexture);
+
+    ShowNotification(FText::Format(LOCTEXT("SuccessTextureSaved", "Texture Saved: {0}"), FText::FromString(PackageName)), true);
+}
+
+void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)
+{
+    FNotificationInfo Info(Message);
+    Info.ExpireDuration = 3.0f;
+
+    if (bSuccess)
+    {
+        Info.Image = FAppStyle::GetBrush("Icons.SuccessWithColor");
+    }
+    else
+    {
+        Info.Image = FAppStyle::GetBrush("Icons.ErrorWithColor");
+    }
+
+    TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
+    if (NotificationItem.IsValid())
+    {
+        NotificationItem->SetCompletionState(bSuccess ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
+        NotificationItem->ExpireAndFadeout();
+    }
 }
 
 #undef LOCTEXT_NAMESPACE
