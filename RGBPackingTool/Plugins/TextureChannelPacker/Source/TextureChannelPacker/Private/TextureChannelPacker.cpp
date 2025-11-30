@@ -15,6 +15,10 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "ImageUtils.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Images/SImage.h"
+#include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -65,6 +69,32 @@ void FTextureChannelPackerModule::ShutdownModule()
 
 TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs)
 {
+    TSharedRef<SComboButton> PathPickerComboButton = SNew(SComboButton)
+        .ContentPadding(FMargin(2.0f, 2.0f))
+        .ButtonContent()
+        [
+            SNew(SImage)
+            .Image(FAppStyle::GetBrush("Icons.FolderClosed"))
+        ];
+
+    TWeakPtr<SComboButton> WeakComboButton = PathPickerComboButton;
+    PathPickerComboButton->SetOnGetMenuContent(FOnGetContent::CreateLambda([this, WeakComboButton]()
+    {
+        FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+        FPathPickerConfig PathPickerConfig;
+        PathPickerConfig.DefaultPath = OutputPackagePath;
+        PathPickerConfig.OnPathSelected = FOnPathSelected::CreateLambda([this, WeakComboButton](const FString& NewPath)
+        {
+            OutputPackagePath = NewPath;
+            if (TSharedPtr<SComboButton> StrongComboButton = WeakComboButton.Pin())
+            {
+                StrongComboButton->SetIsOpen(false);
+            }
+        });
+
+        return ContentBrowserModule.Get().CreatePathPicker(PathPickerConfig);
+    }));
+
     return SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         [
@@ -259,9 +289,20 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(SEditableTextBox)
-                    .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
-                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .HAlign(HAlign_Fill)
+                    [
+                        SNew(SEditableTextBox)
+                        .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
+                        .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
+                    ]
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        PathPickerComboButton
+                    ]
                 ]
             ]
 

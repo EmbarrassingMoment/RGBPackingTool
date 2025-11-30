@@ -39,7 +39,8 @@ public class TextureChannelPacker : ModuleRules
                 "PropertyEditor",
                 "ImageCore",
                 "RenderCore",
-                "AssetRegistry"
+                "AssetRegistry",
+                "ContentBrowser"
                 // ... add private dependencies that you statically link with here ...
             }
         );
