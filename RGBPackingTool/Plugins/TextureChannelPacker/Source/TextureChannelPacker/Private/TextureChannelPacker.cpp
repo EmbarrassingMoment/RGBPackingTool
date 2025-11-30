@@ -18,6 +18,7 @@
 #include "Misc/Paths.h"
 #include "ImageUtils.h"
 #include "Math/UnrealMathUtility.h"
+#include "Math/Float16.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
@@ -513,6 +514,24 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
         for (int32 i = 0; i < NumPixels; ++i)
         {
             uint8 Val = (uint8)(GrayData16[i] >> 8);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+    }
+    else if (SrcFormat == TSF_R16F)
+    {
+        const FFloat16* Pixel16 = (const FFloat16*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+    }
+    else if (SrcFormat == TSF_R32F)
+    {
+        const float* Pixel32 = (const float*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
     }
