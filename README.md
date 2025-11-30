@@ -1,21 +1,25 @@
 # TextureChannelPacker
 
-**TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack three separate grayscale textures into the Red, Green, and Blue channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
+**TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
 
 ## Features
 
-- **Channel Packing**: Takes three input textures and packs their Red channels into the output's Red, Green, and Blue channels respectively.
+- **4-Channel Packing (RGBA)**: Takes up to four input textures and packs their Red channels into the output's Red, Green, Blue, and Alpha channels respectively.
 - **Auto-Resizing**: Automatically resizes input textures to match the specified target resolution using High-Quality Bilinear Interpolation (`FImageUtils`).
 - **Input Handling**:
   - Reads the **Red channel** from each source texture.
   - If an input texture is missing, the corresponding channel is filled with Black (0).
-  - The Alpha channel is always set to 1.0 (White).
+  - **Optional Alpha Channel**: If an Alpha texture is assigned, its Red channel is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
+- **Extended Format Support**:
+  - Supports **16-bit Grayscale** and **32-bit Float (SDF)** source formats, ensuring high-precision data is processed correctly without "black texture" issues.
 - **Output Configuration**:
-  - Allows customizing the Output Path, File Name, and Resolution.
-  - Generates `UTexture2D` assets with `CompressionSettings = TC_Masks` and `sRGB = false`, optimized for mask data.
+  - **Compression Settings**: Select from `Masks (Recommended)`, `Grayscale`, or `Default` via a dropdown menu.
+  - Customizes Output Path, File Name, and Resolution.
+  - Generates `UTexture2D` assets with `sRGB = false` (linear color).
 - **User Interface**:
+  - **Path Picker**: Easily select the output directory from the Content Browser using the folder icon button.
+  - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
   - Integrated into the Unreal Engine Editor via the **Tools** menu.
-  - Opens as a dockable **Nomad Tab**.
 
 ## Requirements
 
@@ -54,21 +58,23 @@
    In the Unreal Editor, navigate to the main menu bar and select **Tools > Texture Packing**. This will open the Texture Channel Packer tab. You can dock this tab anywhere in your editor layout.
 
 2. **Assign Inputs**:
-   - **Red Channel Input**: Select a texture to pack into the Red channel (e.g., Ambient Occlusion).
-   - **Green Channel Input**: Select a texture to pack into the Green channel (e.g., Roughness).
-   - **Blue Channel Input**: Select a texture to pack into the Blue channel (e.g., Metallic).
+   - **Red Channel Input**: Select a texture for the Red channel (e.g., Ambient Occlusion).
+   - **Green Channel Input**: Select a texture for the Green channel (e.g., Roughness).
+   - **Blue Channel Input**: Select a texture for the Blue channel (e.g., Metallic).
+   - **Alpha Channel Input** (Optional): Select a texture for the Alpha channel. If empty, it defaults to White (255).
 
-   *Note: You can leave any input empty; that channel will be filled with black.*
+   *Note: You can leave any input empty; R/G/B channels will be filled with black if missing.*
 
 3. **Configure Output**:
-   - **Resolution**: Set the target resolution for the output texture (e.g., 2048). All inputs will be resized to this resolution.
-   - **Output Path**: Specify the game folder path where the asset will be saved (e.g., `/Game/Textures/Packed`).
+   - **Resolution**: Set the target resolution for the output texture (e.g., 2048).
+   - **Compression Settings**: Choose the compression type (default is `Masks`).
+   - **Output Path**: Specify the game folder path. You can type it manually or click the **Folder Icon** to select a directory from the Content Browser.
    - **File Name**: Enter the desired name for the new texture asset.
 
 4. **Generate**:
    Click the **Generate Texture** button.
    - The tool will process the textures and create a new asset in the Content Browser at the specified location.
-   - The output texture will have sRGB disabled and Compression Settings set to Masks (Linear Color).
+   - A Toast Notification will confirm if the operation was successful.
 
 ## License
 
