@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 #include "Input/Reply.h"
+#include "Engine/Texture.h"
 
 class SDockTab;
 class FSpawnTabArgs;
@@ -38,4 +39,11 @@ private:
 
     /** Helper function to show notifications */
     void ShowNotification(const FText& Message, bool bSuccess);
+
+    /** Compression Options */
+    TArray<TSharedPtr<FString>> CompressionOptions;
+    TSharedPtr<FString> CurrentCompressionOption;
+
+    /** Helper to get the enum value */
+    TextureCompressionSettings GetSelectedCompressionSettings() const;
 };
