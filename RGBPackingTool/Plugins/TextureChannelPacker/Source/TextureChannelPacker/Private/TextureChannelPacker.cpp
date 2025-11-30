@@ -17,6 +17,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "ImageUtils.h"
+#include "Math/UnrealMathUtility.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
@@ -512,6 +513,15 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
         for (int32 i = 0; i < NumPixels; ++i)
         {
             uint8 Val = (uint8)(GrayData16[i] >> 8);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+    }
+    else if (SrcFormat == TSF_RGBA32F)
+    {
+        const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
     }
