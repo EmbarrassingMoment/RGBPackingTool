@@ -506,6 +506,15 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
     }
+    else if (SrcFormat == TSF_G16)
+    {
+        const uint16* GrayData16 = (const uint16*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)(GrayData16[i] >> 8);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+    }
     else
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
