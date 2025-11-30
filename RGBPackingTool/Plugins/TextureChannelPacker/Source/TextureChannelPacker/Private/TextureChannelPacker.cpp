@@ -22,6 +22,8 @@
 #include "Widgets/Images/SImage.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
+#include "Internationalization/Internationalization.h"
+#include "Internationalization/Culture.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -410,6 +412,18 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         ];
 }
 
+// Helper function to localize notifications
+static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText, const FString& JapaneseText)
+{
+    FString CultureName = FInternationalization::Get().GetCurrentCulture()->GetTwoLetterISOLanguageName();
+    if (CultureName == TEXT("ja"))
+    {
+        return FText::FromString(JapaneseText);
+    }
+    // We return FText::FromString to avoid unsafe usage of internal localization macros with dynamic strings.
+    return FText::FromString(EnglishText);
+}
+
 FReply FTextureChannelPackerModule::OnGenerateClicked()
 {
     UE_LOG(LogTexturePacker, Log, TEXT("Generating Texture..."));
@@ -424,14 +438,16 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     // Validation Check 1: At least one input texture
     if (!InputTextureR.IsValid() && !InputTextureG.IsValid() && !InputTextureB.IsValid() && !InputTextureA.IsValid())
     {
-        ShowNotification(LOCTEXT("ErrorNoTextures", "Please select at least one input texture."), false);
+        FText Msg = GetLocalizedMessage(TEXT("ErrorNoTextures"), TEXT("Please select at least one input texture."), TEXT("入力テクスチャを少なくとも1つ選択してください。"));
+        ShowNotification(Msg, false);
         return FReply::Handled();
     }
 
     // Validation Check 2: Output filename is not empty
     if (OutputFileName.IsEmpty())
     {
-        ShowNotification(LOCTEXT("ErrorNoFileName", "Please specify a file name."), false);
+        FText Msg = GetLocalizedMessage(TEXT("ErrorNoFileName"), TEXT("Please specify a file name."), TEXT("ファイル名を指定してください。"));
+        ShowNotification(Msg, false);
         return FReply::Handled();
     }
 
@@ -602,7 +618,8 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(NewTexture);
 
-    ShowNotification(FText::Format(LOCTEXT("SuccessTextureSaved", "Texture Saved: {0}"), FText::FromString(PackageName)), true);
+    FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
+    ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
 }
 
 void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)
