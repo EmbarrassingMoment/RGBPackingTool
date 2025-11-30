@@ -18,6 +18,7 @@
 #include "Misc/Paths.h"
 #include "ImageUtils.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
@@ -30,6 +31,12 @@ static const FName TextureChannelPackerTabName("TextureChannelPacker");
 
 void FTextureChannelPackerModule::StartupModule()
 {
+    // Initialize Compression Options
+    CompressionOptions.Add(MakeShared<FString>("Masks (Recommended)"));
+    CompressionOptions.Add(MakeShared<FString>("Grayscale"));
+    CompressionOptions.Add(MakeShared<FString>("Default"));
+    CurrentCompressionOption = CompressionOptions[0];
+
     // Register Nomad Tab
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TextureChannelPackerTabName, FOnSpawnTab::CreateRaw(this, &FTextureChannelPackerModule::OnSpawnPluginTab))
         .SetDisplayName(LOCTEXT("TextureChannelPackerTabTitle", "Texture Channel Packer"))
@@ -271,6 +278,46 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .AllowSpin(true)
                     .MinSliderValue(1)
                     .MaxSliderValue(8192)
+                ]
+            ]
+
+            // Compression Settings
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("CompressionLabel", "Compression"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SComboBox<TSharedPtr<FString>>)
+                    .OptionsSource(&CompressionOptions)
+                    .OnSelectionChanged_Lambda([this](TSharedPtr<FString> NewSelection, ESelectInfo::Type)
+                    {
+                        if (NewSelection.IsValid())
+                        {
+                            CurrentCompressionOption = NewSelection;
+                        }
+                    })
+                    .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+                    {
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
+                    })
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]()
+                        {
+                            return CurrentCompressionOption.IsValid() ? FText::FromString(*CurrentCompressionOption) : FText::GetEmpty();
+                        })
+                    ]
                 ]
             ]
 
@@ -548,7 +595,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     NewTexture->SetPlatformData(PlatformData);
 
     // Final settings
-    NewTexture->CompressionSettings = TC_Masks;
+    NewTexture->CompressionSettings = GetSelectedCompressionSettings();
     NewTexture->SRGB = false;
     NewTexture->UpdateResource();
 
@@ -578,6 +625,18 @@ void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bS
         NotificationItem->SetCompletionState(bSuccess ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
         NotificationItem->ExpireAndFadeout();
     }
+}
+
+TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSettings() const
+{
+    if (CurrentCompressionOption.IsValid())
+    {
+        const FString& Option = *CurrentCompressionOption;
+        if (Option == "Masks (Recommended)") return TC_Masks;
+        if (Option == "Grayscale") return TC_Grayscale;
+        if (Option == "Default") return TC_Default;
+    }
+    return TC_Masks; // Fallback
 }
 
 #undef LOCTEXT_NAMESPACE
