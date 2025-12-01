@@ -26,6 +26,12 @@
 - **Unreal Engine 5.5+** (Developed and tested on 5.7)
 - C++ Project (to compile the plugin)
 
+## Why use this tool?
+
+- **Texture Samplers Limit**: Materials have a limit on how many textures they can read simultaneously (usually 16). Packing 3 textures (AO, Roughness, Metallic) into 1 saves sampler slots, avoiding material errors.
+- **Memory Efficiency**: Combining files reduces the memory overhead compared to loading multiple separate files.
+- **File Management**: It keeps the Content Browser organized by reducing the file count.
+
 ## Installation
 
 1. **Clone or Download**:
