@@ -21,6 +21,14 @@
   - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
   - Integrated into the Unreal Engine Editor via the **Tools** menu.
 
+## Why use this tool? (For Blueprint Developers)
+
+If you are new to graphics optimization, you might wonder why "Channel Packing" is important. Here are three key benefits:
+
+1.  **Save Texture Samplers**: Materials in Unreal Engine have a limit (usually 16) on how many unique textures they can read. By packing 3 separate textures (e.g., Ambient Occlusion, Roughness, Metallic) into a single file, you save 2 sampler slots. This allows you to create more complex materials without hitting the "Texture Sampler out of bounds" error.
+2.  **Memory Efficiency**: Loading a single texture file is generally more VRAM-efficient than loading three separate files. This helps keep your game running smoothly, especially on lower-end hardware.
+3.  **Better File Management**: Combining related textures reduces clutter in your Content Browser, making your project easier to organize and maintain.
+
 ## Requirements
 
 - **Unreal Engine 5.5+** (Developed and tested on 5.7)
