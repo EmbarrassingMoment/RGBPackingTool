@@ -82,6 +82,14 @@
    - The tool will process the textures and create a new asset in the Content Browser at the specified location.
    - A Toast Notification will confirm if the operation was successful.
 
+## Compression Settings Explained
+
+| Setting | Best For | Description |
+| :--- | :--- | :--- |
+| **Masks (Recommended)** | **ORM Maps**, Packed Masks | Disables sRGB. Prevents color artifacts between channels. Best for standard PBR workflows. |
+| **Grayscale** | **Height Maps**, Single Masks | Keeps values linear. Good for single-channel data. |
+| **Default** | Color Textures | Standard compression. Usually for Albedo/Diffuse. Not recommended for channel packing. |
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
