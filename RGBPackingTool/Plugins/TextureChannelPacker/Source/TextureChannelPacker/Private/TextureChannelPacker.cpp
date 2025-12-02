@@ -33,6 +33,18 @@ DEFINE_LOG_CATEGORY_STATIC(LogTexturePacker, Log, All);
 
 static const FName TextureChannelPackerTabName("TextureChannelPacker");
 
+// Helper function to localize notifications
+static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText, const FString& JapaneseText)
+{
+    FString CultureName = FInternationalization::Get().GetCurrentCulture()->GetTwoLetterISOLanguageName();
+    if (CultureName == TEXT("ja"))
+    {
+        return FText::FromString(JapaneseText);
+    }
+    // We return FText::FromString to avoid unsafe usage of internal localization macros with dynamic strings.
+    return FText::FromString(EnglishText);
+}
+
 void FTextureChannelPackerModule::StartupModule()
 {
     // Initialize Compression Options
@@ -124,7 +136,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                 [
                     SNew(STextBlock)
-                    .Text(LOCTEXT("RedChannelLabel", "Red Channel Input"))
+                    .Text(GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -156,7 +168,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                 [
                     SNew(STextBlock)
-                    .Text(LOCTEXT("GreenChannelLabel", "Green Channel Input"))
+                    .Text(GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -188,7 +200,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                 [
                     SNew(STextBlock)
-                    .Text(LOCTEXT("BlueChannelLabel", "Blue Channel Input"))
+                    .Text(GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -220,7 +232,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                 [
                     SNew(STextBlock)
-                    .Text(LOCTEXT("AlphaChannelLabel", "Alpha Channel Input"))
+                    .Text(GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -412,18 +424,6 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 ]
             ]
         ];
-}
-
-// Helper function to localize notifications
-static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText, const FString& JapaneseText)
-{
-    FString CultureName = FInternationalization::Get().GetCurrentCulture()->GetTwoLetterISOLanguageName();
-    if (CultureName == TEXT("ja"))
-    {
-        return FText::FromString(JapaneseText);
-    }
-    // We return FText::FromString to avoid unsafe usage of internal localization macros with dynamic strings.
-    return FText::FromString(EnglishText);
 }
 
 FReply FTextureChannelPackerModule::OnGenerateClicked()
