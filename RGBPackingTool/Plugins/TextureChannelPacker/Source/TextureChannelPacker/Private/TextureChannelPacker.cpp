@@ -596,18 +596,6 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
-    // Initialize PlatformData
-    FTexturePlatformData* PlatformData = new FTexturePlatformData();
-    PlatformData->SizeX = Resolution;
-    PlatformData->SizeY = Resolution;
-    PlatformData->PixelFormat = PF_B8G8R8A8;
-
-    // Allocate Mip
-    FTexture2DMipMap* Mip = new FTexture2DMipMap();
-    PlatformData->Mips.Add(Mip);
-    Mip->SizeX = Resolution;
-    Mip->SizeY = Resolution;
-
     // Get Resized Data for Inputs
     TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
     TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
@@ -616,42 +604,35 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     bool bHasAlpha = InputTextureA.IsValid();
 
-    // Lock and Write Pixels
-    Mip->BulkData.Lock(LOCK_READ_WRITE);
-    uint8* TextureData = (uint8*)Mip->BulkData.Realloc(Resolution * Resolution * 4);
-
-    for (int32 i = 0; i < Resolution * Resolution; ++i)
-    {
-        // Each Data array is RGBA.
-        // New.R = InputR_Data[i].R (Byte 0)
-        // New.G = InputG_Data[i].R (Byte 0)
-        // New.B = InputB_Data[i].R (Byte 0)
-
-        uint8 R_Val = DataR[i * 4 + 0];
-        uint8 G_Val = DataG[i * 4 + 0];
-        uint8 B_Val = DataB[i * 4 + 0];
-        uint8 A_Val = bHasAlpha ? DataA[i * 4 + 0] : 255; // Use Red channel of Alpha input, or 255
-
-        // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
-        TextureData[i * 4 + 0] = B_Val; // B
-        TextureData[i * 4 + 1] = G_Val; // G
-        TextureData[i * 4 + 2] = R_Val; // R
-        TextureData[i * 4 + 3] = A_Val; // A
-    }
-
-    Mip->BulkData.Unlock();
-
-    // Assign PlatformData
 #if WITH_EDITORONLY_DATA
+    // Initialize Source
     NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
-    uint8* NewSourceData = NewTexture->Source.LockMip(0);
-    if (NewSourceData)
+
+    // Lock and Write Pixels directly to Source
+    uint8* MipData = NewTexture->Source.LockMip(0);
+    if (MipData)
     {
-        FMemory::Memcpy(NewSourceData, TextureData, Resolution * Resolution * 4);
+        for (int32 i = 0; i < Resolution * Resolution; ++i)
+        {
+            // Each Data array is RGBA.
+            // New.R = InputR_Data[i].R (Byte 0)
+            // New.G = InputG_Data[i].R (Byte 0)
+            // New.B = InputB_Data[i].R (Byte 0)
+
+            uint8 R_Val = DataR[i * 4 + 0];
+            uint8 G_Val = DataG[i * 4 + 0];
+            uint8 B_Val = DataB[i * 4 + 0];
+            uint8 A_Val = bHasAlpha ? DataA[i * 4 + 0] : 255; // Use Red channel of Alpha input, or 255
+
+            // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
+            MipData[i * 4 + 0] = B_Val; // B
+            MipData[i * 4 + 1] = G_Val; // G
+            MipData[i * 4 + 2] = R_Val; // R
+            MipData[i * 4 + 3] = A_Val; // A
+        }
     }
     NewTexture->Source.UnlockMip(0);
 #endif
-    NewTexture->SetPlatformData(PlatformData);
 
     // Final settings
     NewTexture->CompressionSettings = GetSelectedCompressionSettings();
