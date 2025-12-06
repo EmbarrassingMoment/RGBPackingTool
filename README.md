@@ -1,3 +1,5 @@
+[日本語 (Japanese)](README.ja.md)
+
 # TextureChannelPacker
 
 **TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
