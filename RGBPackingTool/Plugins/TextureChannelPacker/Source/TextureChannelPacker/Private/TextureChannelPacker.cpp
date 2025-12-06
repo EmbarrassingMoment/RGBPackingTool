@@ -588,6 +588,8 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
 {
+    check(IsInGameThread());
+
     // Create the package
     UPackage* Package = CreatePackage(*PackageName);
     Package->FullyLoad();
