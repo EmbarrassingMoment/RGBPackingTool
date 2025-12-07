@@ -34,6 +34,9 @@ private:
     /** Callback for Generate button */
     FReply OnGenerateClicked();
 
+    /** Automatically generates the output file name based on input textures */
+    void AutoGenerateFileName();
+
     /** Helper function to create the texture asset */
     void CreateTexture(const FString& PackageName, int32 Resolution);
 
