@@ -19,6 +19,7 @@
   - Customizes Output Path, File Name, and Resolution.
   - Generates `UTexture2D` assets with `sRGB = false` (linear color).
 - **User Interface**:
+  - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Path Picker**: Easily select the output directory from the Content Browser using the folder icon button.
   - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
   - Integrated into the Unreal Engine Editor via the **Tools** menu.
@@ -33,6 +34,18 @@
 - **Texture Samplers Limit**: Materials have a limit on how many textures they can read simultaneously (usually 16). Packing 3 textures (AO, Roughness, Metallic) into 1 saves sampler slots, avoiding material errors.
 - **Memory Efficiency**: Combining files reduces the memory overhead compared to loading multiple separate files.
 - **File Management**: It keeps the Content Browser organized by reducing the file count.
+
+## Supported Input Formats
+
+The tool supports a variety of source texture formats, ensuring compatibility with different workflows:
+
+- **8-bit**: `BGRA8`, `Gray8 (G8)` - Standard texture formats.
+- **16-bit**: `Gray16 (G16)` - Useful for **Heightmaps** requiring higher precision.
+- **Float**: `R16F`, `R32F`, `RGBA32F` - Useful for **SDFs (Signed Distance Fields)** and **LUTs**.
+
+## Limitations
+
+- **Floating Point Textures**: Floating point textures (e.g., SDF, Heightmaps) are **clamped** to the `0.0 - 1.0` range during packing. Values outside this range will be clipped.
 
 ## Installation
 
@@ -71,7 +84,7 @@
    - **Blue Channel Input**: Select a texture for the Blue channel (e.g., Metallic).
    - **Alpha Channel Input** (Optional): Select a texture for the Alpha channel. If empty, it defaults to White (255).
 
-   *Note: You can leave any input empty; R/G/B channels will be filled with black if missing.*
+   *Note: You can **Drag & Drop** textures directly from the Content Browser into the slots. You can also leave any input empty; R/G/B channels will be filled with black if missing.*
 
 3. **Configure Output**:
    - **Resolution**: Set the target resolution for the output texture (e.g., 2048).
