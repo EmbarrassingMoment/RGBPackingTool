@@ -435,57 +435,6 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         ];
 }
 
-void FTextureChannelPackerModule::AutoGenerateFileName()
-{
-    TArray<FString> ValidNames;
-    if (InputTextureR.IsValid()) ValidNames.Add(InputTextureR->GetName());
-    if (InputTextureG.IsValid()) ValidNames.Add(InputTextureG->GetName());
-    if (InputTextureB.IsValid()) ValidNames.Add(InputTextureB->GetName());
-    if (InputTextureA.IsValid()) ValidNames.Add(InputTextureA->GetName());
-
-    if (ValidNames.Num() == 0)
-    {
-        return;
-    }
-
-    FString BaseName;
-
-    // Find Common Prefix
-    if (ValidNames.Num() > 1)
-    {
-        FString Prefix = ValidNames[0];
-        for (int32 i = 1; i < ValidNames.Num(); ++i)
-        {
-            const FString& Current = ValidNames[i];
-            int32 CommonLen = 0;
-            while (CommonLen < Prefix.Len() && CommonLen < Current.Len() && Prefix[CommonLen] == Current[CommonLen])
-            {
-                CommonLen++;
-            }
-            Prefix = Prefix.Left(CommonLen);
-        }
-
-        if (Prefix.Len() >= 3)
-        {
-            BaseName = Prefix;
-        }
-    }
-
-    // Case B: No Prefix/Mismatch or Single Input
-    if (BaseName.IsEmpty())
-    {
-        BaseName = ValidNames[0];
-    }
-
-    // Remove trailing underscores
-    while (BaseName.EndsWith(TEXT("_")))
-    {
-        BaseName.LeftChopInline(1);
-    }
-
-    // Apply Suffix
-    OutputFileName = BaseName + TEXT("_ORM");
-}
 
 FReply FTextureChannelPackerModule::OnGenerateClicked()
 {
