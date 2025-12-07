@@ -474,10 +474,11 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
 static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
 {
     TArray<uint8> ResultData;
-    ResultData.Init(0, TargetSize * TargetSize * 4); // RGBA (4 bytes per pixel)
+    // Lazy Allocation: Do not initialize ResultData yet.
 
     if (!SourceTex)
     {
+        ResultData.Init(0, TargetSize * TargetSize * 4);
         return ResultData;
     }
 
@@ -492,6 +493,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
+        ResultData.Init(0, TargetSize * TargetSize * 4);
         return ResultData;
     }
 
@@ -500,11 +502,14 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     SrcColors.SetNumUninitialized(NumPixels);
 
     // Convert input to FColor (BGRA)
-    if (SrcFormat == TSF_BGRA8)
+    switch (SrcFormat)
+    {
+    case TSF_BGRA8:
     {
         FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
+        break;
     }
-    else if (SrcFormat == TSF_G8)
+    case TSF_G8:
     {
         const uint8* GrayData = SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
@@ -512,8 +517,9 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             uint8 Val = GrayData[i];
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
     }
-    else if (SrcFormat == TSF_G16)
+    case TSF_G16:
     {
         const uint16* GrayData16 = (const uint16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
@@ -521,8 +527,9 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             uint8 Val = (uint8)(GrayData16[i] >> 8);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
     }
-    else if (SrcFormat == TSF_R16F)
+    case TSF_R16F:
     {
         const FFloat16* Pixel16 = (const FFloat16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
@@ -530,8 +537,9 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
     }
-    else if (SrcFormat == TSF_R32F)
+    case TSF_R32F:
     {
         const float* Pixel32 = (const float*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
@@ -539,8 +547,9 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
     }
-    else if (SrcFormat == TSF_RGBA32F)
+    case TSF_RGBA32F:
     {
         const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
@@ -548,11 +557,14 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
             uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
     }
-    else
+    default:
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
         FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
+        break;
+    }
     }
 
     SourceTex->Source.UnlockMip(0);
@@ -570,6 +582,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 
     // Convert FColor (BGRA) to RGBA uint8 array
+    ResultData.SetNumUninitialized(TargetSize * TargetSize * 4);
     uint8* DestData = ResultData.GetData();
     for (int32 i = 0; i < TargetSize * TargetSize; ++i)
     {
@@ -581,6 +594,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+    ResultData.Init(0, TargetSize * TargetSize * 4);
 #endif
 
     return ResultData;
