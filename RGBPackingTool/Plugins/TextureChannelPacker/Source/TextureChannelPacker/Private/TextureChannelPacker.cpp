@@ -582,7 +582,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
         const uint16* GrayData16 = (const uint16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            uint8 Val = (uint8)(GrayData16[i] >> 8);
+            uint8 Val = (uint8)FMath::Clamp<int32>((int32)GrayData16[i] * 255 / 65535, 0, 255);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
         break;
