@@ -49,4 +49,10 @@ private:
 
     /** Helper to get the enum value */
     TextureCompressionSettings GetSelectedCompressionSettings() const;
+
+    /** Determines whether to use high precision (16-bit float) or standard (8-bit) output */
+    ETextureSourceFormat DetermineOutputFormat() const;
+
+    /** Checks if any input texture is high precision */
+    bool IsHighPrecisionInput() const;
 };

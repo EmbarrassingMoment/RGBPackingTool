@@ -43,6 +43,15 @@ The tool supports a variety of source texture formats, ensuring compatibility wi
 - **16-bit**: `Gray16 (G16)` - Useful for **Heightmaps** requiring higher precision.
 - **Float**: `R16F`, `R32F`, `RGBA32F` - Useful for **SDFs (Signed Distance Fields)** and **LUTs**.
 
+## Advanced Features
+
+### High-Precision Texture Support
+The tool automatically detects high-precision input textures (16-bit, Float) and generates output in **RGBA16F format** to preserve quality.
+
+- **Supported Input**: G16, R16F, R32F, RGBA32F
+- **Output Format**: Automatically switches between BGRA8 (standard) and RGBA16F (high-precision)
+- **Use Cases**: Heightmaps, Signed Distance Fields (SDF), HDR masks
+
 ## Limitations
 
 - **Floating Point Textures**: Floating point textures (e.g., SDF, Heightmaps) are **clamped** to the `0.0 - 1.0` range during packing. Values outside this range will be clipped.

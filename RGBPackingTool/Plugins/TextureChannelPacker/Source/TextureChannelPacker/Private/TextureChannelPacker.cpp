@@ -406,6 +406,21 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 ]
             ]
 
+            // Warning Text
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(20.0f, 0.0f, 20.0f, 0.0f)
+            .HAlign(HAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(GetLocalizedMessage(TEXT("HighPrecisionWarning"), TEXT("High-precision input detected. Output will use 16-bit float format."), TEXT("高精度入力が検出されました。出力は16bit Float形式になります。")))
+                .ColorAndOpacity(FLinearColor(1.0f, 1.0f, 0.0f)) // Yellow
+                .Visibility_Lambda([this]()
+                {
+                    return IsHighPrecisionInput() ? EVisibility::Visible : EVisibility::Collapsed;
+                })
+            ]
+
             // Spacer
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -441,11 +456,14 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
 
 FReply FTextureChannelPackerModule::OnGenerateClicked()
 {
+    UE_LOG(LogTexturePacker, Log, TEXT("Input Format Detection:"));
+    UE_LOG(LogTexturePacker, Log, TEXT("  Red: %s"), InputTextureR.IsValid() ? *UEnum::GetValueAsString(InputTextureR->Source.GetFormat()) : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("  Green: %s"), InputTextureG.IsValid() ? *UEnum::GetValueAsString(InputTextureG->Source.GetFormat()) : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("  Blue: %s"), InputTextureB.IsValid() ? *UEnum::GetValueAsString(InputTextureB->Source.GetFormat()) : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("  Alpha: %s"), InputTextureA.IsValid() ? *UEnum::GetValueAsString(InputTextureA->Source.GetFormat()) : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Selected Output Format: %s"), *UEnum::GetValueAsString(DetermineOutputFormat()));
+
     UE_LOG(LogTexturePacker, Log, TEXT("Generating Texture..."));
-    UE_LOG(LogTexturePacker, Log, TEXT("Input Red: %s"), InputTextureR.IsValid() ? *InputTextureR->GetPathName() : TEXT("None"));
-    UE_LOG(LogTexturePacker, Log, TEXT("Input Green: %s"), InputTextureG.IsValid() ? *InputTextureG->GetPathName() : TEXT("None"));
-    UE_LOG(LogTexturePacker, Log, TEXT("Input Blue: %s"), InputTextureB.IsValid() ? *InputTextureB->GetPathName() : TEXT("None"));
-    UE_LOG(LogTexturePacker, Log, TEXT("Input Alpha: %s"), InputTextureA.IsValid() ? *InputTextureA->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d"), TargetResolution);
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
@@ -540,138 +558,236 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
 }
 
 // Helper function to read and resize texture data
-static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
+static void GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize, bool bHighPrecision, TArray<uint8>& OutData8, TArray<FFloat16>& OutData16)
 {
-    TArray<uint8> ResultData;
-    // Lazy Allocation: Do not initialize ResultData yet.
+    OutData8.Empty();
+    OutData16.Empty();
 
     if (!SourceTex)
     {
-        ResultData.Init(0, TargetSize * TargetSize * 4);
-        return ResultData;
+        if (bHighPrecision) OutData16.Init(FFloat16(0.0f), TargetSize * TargetSize * 4);
+        else OutData8.Init(0, TargetSize * TargetSize * 4);
+        return;
     }
 
 #if WITH_EDITORONLY_DATA
-    // Access Source Data
     int32 SrcWidth = SourceTex->Source.GetSizeX();
     int32 SrcHeight = SourceTex->Source.GetSizeY();
     ETextureSourceFormat SrcFormat = SourceTex->Source.GetFormat();
-
-    // Lock Mip 0
     uint8* SrcData = SourceTex->Source.LockMip(0);
+
     if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
-        ResultData.Init(0, TargetSize * TargetSize * 4);
-        return ResultData;
+        if (bHighPrecision) OutData16.Init(FFloat16(0.0f), TargetSize * TargetSize * 4);
+        else OutData8.Init(0, TargetSize * TargetSize * 4);
+        return;
     }
 
     int32 NumPixels = SrcWidth * SrcHeight;
-    TArray<FColor> SrcColors;
-    SrcColors.SetNumUninitialized(NumPixels);
 
-    // Convert input to FColor (BGRA)
-    switch (SrcFormat)
+    if (bHighPrecision)
     {
-    case TSF_BGRA8:
-    {
-        FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
-        break;
-    }
-    case TSF_G8:
-    {
-        const uint8* GrayData = SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = GrayData[i];
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_G16:
-    {
-        const uint16* GrayData16 = (const uint16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)(GrayData16[i] >> 8);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R16F:
-    {
-        const FFloat16* Pixel16 = (const FFloat16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R32F:
-    {
-        const float* Pixel32 = (const float*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_RGBA32F:
-    {
-        const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    default:
-    {
-        UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
-        FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
-        break;
-    }
-    }
+        TArray<FLinearColor> SrcColors;
+        SrcColors.SetNumUninitialized(NumPixels);
 
-    SourceTex->Source.UnlockMip(0);
+        // Convert to FLinearColor
+        switch(SrcFormat)
+        {
+            case TSF_BGRA8:
+            {
+                 const FColor* Colors = (const FColor*)SrcData;
+                 for(int32 i=0; i<NumPixels; ++i) SrcColors[i] = FLinearColor(Colors[i]);
+                 break;
+            }
+            case TSF_G8:
+            {
+                for(int32 i=0; i<NumPixels; ++i)
+                {
+                    float V = (float)SrcData[i] / 255.0f;
+                    SrcColors[i] = FLinearColor(V, V, V, 1.0f);
+                }
+                break;
+            }
+            case TSF_G16:
+            {
+                const uint16* D = (const uint16*)SrcData;
+                for(int32 i=0; i<NumPixels; ++i)
+                {
+                    float V = (float)D[i] / 65535.0f;
+                    SrcColors[i] = FLinearColor(V, V, V, 1.0f);
+                }
+                break;
+            }
+            case TSF_R16F:
+            {
+                const FFloat16* D = (const FFloat16*)SrcData;
+                for(int32 i=0; i<NumPixels; ++i)
+                {
+                    float V = (float)D[i];
+                    SrcColors[i] = FLinearColor(V, V, V, 1.0f);
+                }
+                break;
+            }
+            case TSF_R32F:
+            {
+                const float* D = (const float*)SrcData;
+                for(int32 i=0; i<NumPixels; ++i)
+                {
+                    float V = D[i];
+                    SrcColors[i] = FLinearColor(V, V, V, 1.0f);
+                }
+                break;
+            }
+            case TSF_RGBA32F:
+            {
+                 const FLinearColor* D = (const FLinearColor*)SrcData;
+                 FMemory::Memcpy(SrcColors.GetData(), D, NumPixels * sizeof(FLinearColor));
+                 break;
+            }
+            default:
+            {
+                 UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format for High Precision: %d"), (int32)SrcFormat);
+                 for(int32 i=0; i<NumPixels; ++i) SrcColors[i] = FLinearColor::Black;
+                 break;
+            }
+        }
 
-    // Resize if necessary
-    TArray<FColor> ResizedColors;
-    if (SrcWidth != TargetSize || SrcHeight != TargetSize)
-    {
-        ResizedColors.SetNum(TargetSize * TargetSize);
-        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, false);
+        SourceTex->Source.UnlockMip(0);
+
+        TArray<FLinearColor> ResizedColors;
+        if (SrcWidth != TargetSize || SrcHeight != TargetSize)
+        {
+            ResizedColors.SetNum(TargetSize * TargetSize);
+            // Linear space interpolation is appropriate for data textures
+            FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, true);
+        }
+        else
+        {
+            ResizedColors = SrcColors;
+        }
+
+        OutData16.SetNumUninitialized(TargetSize * TargetSize * 4);
+        for(int32 i=0; i<TargetSize * TargetSize; ++i)
+        {
+            const FLinearColor& C = ResizedColors[i];
+            OutData16[i*4 + 0] = FFloat16(C.R);
+            OutData16[i*4 + 1] = FFloat16(C.G);
+            OutData16[i*4 + 2] = FFloat16(C.B);
+            OutData16[i*4 + 3] = FFloat16(C.A);
+        }
     }
     else
     {
-        ResizedColors = SrcColors;
-    }
+        // Legacy 8-bit path (Preserved from original code)
+        TArray<FColor> SrcColors;
+        SrcColors.SetNumUninitialized(NumPixels);
 
-    // Convert FColor (BGRA) to RGBA uint8 array
-    ResultData.SetNumUninitialized(TargetSize * TargetSize * 4);
-    uint8* DestData = ResultData.GetData();
-    for (int32 i = 0; i < TargetSize * TargetSize; ++i)
-    {
-        const FColor& C = ResizedColors[i];
-        DestData[i * 4 + 0] = C.R;
-        DestData[i * 4 + 1] = C.G;
-        DestData[i * 4 + 2] = C.B;
-        DestData[i * 4 + 3] = C.A;
+        // Convert input to FColor (BGRA)
+        switch (SrcFormat)
+        {
+        case TSF_BGRA8:
+        {
+            FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
+            break;
+        }
+        case TSF_G8:
+        {
+            const uint8* GrayData = SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                uint8 Val = GrayData[i];
+                SrcColors[i] = FColor(Val, Val, Val, 255);
+            }
+            break;
+        }
+        case TSF_G16:
+        {
+            const uint16* GrayData16 = (const uint16*)SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                uint8 Val = (uint8)(GrayData16[i] >> 8);
+                SrcColors[i] = FColor(Val, Val, Val, 255);
+            }
+            break;
+        }
+        case TSF_R16F:
+        {
+            const FFloat16* Pixel16 = (const FFloat16*)SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
+                SrcColors[i] = FColor(Val, Val, Val, 255);
+            }
+            break;
+        }
+        case TSF_R32F:
+        {
+            const float* Pixel32 = (const float*)SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
+                SrcColors[i] = FColor(Val, Val, Val, 255);
+            }
+            break;
+        }
+        case TSF_RGBA32F:
+        {
+            const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
+                SrcColors[i] = FColor(Val, Val, Val, 255);
+            }
+            break;
+        }
+        default:
+        {
+            UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
+            FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
+            break;
+        }
+        }
+
+        SourceTex->Source.UnlockMip(0);
+
+        // Resize if necessary
+        TArray<FColor> ResizedColors;
+        if (SrcWidth != TargetSize || SrcHeight != TargetSize)
+        {
+            ResizedColors.SetNum(TargetSize * TargetSize);
+            FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, false);
+        }
+        else
+        {
+            ResizedColors = SrcColors;
+        }
+
+        // Convert FColor (BGRA) to RGBA uint8 array
+        OutData8.SetNumUninitialized(TargetSize * TargetSize * 4);
+        uint8* DestData = OutData8.GetData();
+        for (int32 i = 0; i < TargetSize * TargetSize; ++i)
+        {
+            const FColor& C = ResizedColors[i];
+            DestData[i * 4 + 0] = C.R;
+            DestData[i * 4 + 1] = C.G;
+            DestData[i * 4 + 2] = C.B;
+            DestData[i * 4 + 3] = C.A;
+        }
     }
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-    ResultData.Init(0, TargetSize * TargetSize * 4);
+    if (bHighPrecision) OutData16.Init(FFloat16(0.0f), TargetSize * TargetSize * 4);
+    else OutData8.Init(0, TargetSize * TargetSize * 4);
 #endif
-
-    return ResultData;
 }
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
 {
     check(IsInGameThread());
+
+    ETextureSourceFormat OutputFormat = DetermineOutputFormat();
+    bool bHighPrecision = (OutputFormat == TSF_RGBA16F);
 
     // Create the package
     UPackage* Package = CreatePackage(*PackageName);
@@ -682,38 +798,58 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
     // Get Resized Data for Inputs
-    TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
-    TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
-    TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
-    TArray<uint8> DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
+    TArray<uint8> DataR_8, DataG_8, DataB_8, DataA_8;
+    TArray<FFloat16> DataR_16, DataG_16, DataB_16, DataA_16;
+
+    GetResizedTextureData(InputTextureR.Get(), Resolution, bHighPrecision, DataR_8, DataR_16);
+    GetResizedTextureData(InputTextureG.Get(), Resolution, bHighPrecision, DataG_8, DataG_16);
+    GetResizedTextureData(InputTextureB.Get(), Resolution, bHighPrecision, DataB_8, DataB_16);
+    GetResizedTextureData(InputTextureA.Get(), Resolution, bHighPrecision, DataA_8, DataA_16);
 
     bool bHasAlpha = InputTextureA.IsValid();
 
 #if WITH_EDITORONLY_DATA
     // Initialize Source
-    NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+    NewTexture->Source.Init(Resolution, Resolution, 1, 1, OutputFormat);
 
     // Lock and Write Pixels directly to Source
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
-        for (int32 i = 0; i < Resolution * Resolution; ++i)
+        if (bHighPrecision)
         {
-            // Each Data array is RGBA.
-            // New.R = InputR_Data[i].R (Byte 0)
-            // New.G = InputG_Data[i].R (Byte 0)
-            // New.B = InputB_Data[i].R (Byte 0)
+             FFloat16* MipData16 = (FFloat16*)MipData;
+             for (int32 i = 0; i < Resolution * Resolution; ++i)
+             {
+                 // DataX_16 is RGBA. Use Red channel (index 0).
+                 FFloat16 R_Val = DataR_16[i * 4 + 0];
+                 FFloat16 G_Val = DataG_16[i * 4 + 0];
+                 FFloat16 B_Val = DataB_16[i * 4 + 0];
+                 FFloat16 A_Val = bHasAlpha ? DataA_16[i * 4 + 0] : FFloat16(1.0f);
 
-            uint8 R_Val = DataR[i * 4 + 0];
-            uint8 G_Val = DataG[i * 4 + 0];
-            uint8 B_Val = DataB[i * 4 + 0];
-            uint8 A_Val = bHasAlpha ? DataA[i * 4 + 0] : 255; // Use Red channel of Alpha input, or 255
+                 // Output Texture TSF_RGBA16F is RGBA
+                 MipData16[i * 4 + 0] = R_Val;
+                 MipData16[i * 4 + 1] = G_Val;
+                 MipData16[i * 4 + 2] = B_Val;
+                 MipData16[i * 4 + 3] = A_Val;
+             }
+        }
+        else
+        {
+            for (int32 i = 0; i < Resolution * Resolution; ++i)
+            {
+                // DataX_8 is RGBA. Use Red channel (index 0).
+                uint8 R_Val = DataR_8[i * 4 + 0];
+                uint8 G_Val = DataG_8[i * 4 + 0];
+                uint8 B_Val = DataB_8[i * 4 + 0];
+                uint8 A_Val = bHasAlpha ? DataA_8[i * 4 + 0] : 255;
 
-            // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
-            MipData[i * 4 + 0] = B_Val; // B
-            MipData[i * 4 + 1] = G_Val; // G
-            MipData[i * 4 + 2] = R_Val; // R
-            MipData[i * 4 + 3] = A_Val; // A
+                // Output Texture TSF_BGRA8 is BGRA
+                MipData[i * 4 + 0] = B_Val; // B
+                MipData[i * 4 + 1] = G_Val; // G
+                MipData[i * 4 + 2] = R_Val; // R
+                MipData[i * 4 + 3] = A_Val; // A
+            }
         }
     }
     NewTexture->Source.UnlockMip(0);
@@ -728,7 +864,14 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     FAssetRegistryModule::AssetCreated(NewTexture);
 
     FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
-    ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
+    FText FinalMessage = FText::Format(FormatPattern, FText::FromString(PackageName));
+
+    if (bHighPrecision)
+    {
+        FinalMessage = FText::Format(FText::FromString(TEXT("{0} (16-bit Float)")), FinalMessage);
+    }
+
+    ShowNotification(FinalMessage, true);
 }
 
 void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)
@@ -763,6 +906,26 @@ TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSe
         if (Option == "Default") return TC_Default;
     }
     return TC_Masks; // Fallback
+}
+
+bool FTextureChannelPackerModule::IsHighPrecisionInput() const
+{
+    auto CheckTexture = [](TWeakObjectPtr<UTexture2D> Tex) -> bool
+    {
+        if (Tex.IsValid())
+        {
+            ETextureSourceFormat Fmt = Tex->Source.GetFormat();
+            return (Fmt == TSF_G16 || Fmt == TSF_R16F || Fmt == TSF_R32F || Fmt == TSF_RGBA32F);
+        }
+        return false;
+    };
+
+    return CheckTexture(InputTextureR) || CheckTexture(InputTextureG) || CheckTexture(InputTextureB) || CheckTexture(InputTextureA);
+}
+
+ETextureSourceFormat FTextureChannelPackerModule::DetermineOutputFormat() const
+{
+    return IsHighPrecisionInput() ? TSF_RGBA16F : TSF_BGRA8;
 }
 
 #undef LOCTEXT_NAMESPACE
