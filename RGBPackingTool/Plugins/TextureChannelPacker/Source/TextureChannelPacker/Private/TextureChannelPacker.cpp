@@ -287,6 +287,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 [
                     SNew(STextBlock)
                     .Text(LOCTEXT("ResolutionLabel", "Resolution (e.g. 2048)"))
+                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - 8192"), TEXT("有効範囲: 1 - 8192")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -296,6 +297,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .Value_Lambda([this] { return TargetResolution; })
                     .OnValueChanged_Lambda([this](int32 NewValue) { TargetResolution = NewValue; })
                     .AllowSpin(true)
+                    .MinValue(1)
+                    .MaxValue(8192)
                     .MinSliderValue(1)
                     .MaxSliderValue(8192)
                 ]
@@ -459,6 +462,14 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     if (OutputFileName.IsEmpty())
     {
         FText Msg = GetLocalizedMessage(TEXT("ErrorNoFileName"), TEXT("Please specify a file name."), TEXT("ファイル名を指定してください。"));
+        ShowNotification(Msg, false);
+        return FReply::Handled();
+    }
+
+    // Validation Check 3: Resolution is valid
+    if (TargetResolution < 1 || TargetResolution > 8192)
+    {
+        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Resolution must be between 1 and 8192."), TEXT("解像度は 1 から 8192 の間で指定してください。"));
         ShowNotification(Msg, false);
         return FReply::Handled();
     }
