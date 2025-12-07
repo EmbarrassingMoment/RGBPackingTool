@@ -40,6 +40,9 @@ private:
     /** Helper function to show notifications */
     void ShowNotification(const FText& Message, bool bSuccess);
 
+    /** Auto-generates the output file name based on input textures */
+    void AutoGenerateFileName();
+
     /** Compression Options */
     TArray<TSharedPtr<FString>> CompressionOptions;
     TSharedPtr<FString> CurrentCompressionOption;

@@ -151,6 +151,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
                     {
                         InputTextureR = Cast<UTexture2D>(AssetData.GetAsset());
+                        AutoGenerateFileName();
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
@@ -183,6 +184,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
                     {
                         InputTextureG = Cast<UTexture2D>(AssetData.GetAsset());
+                        AutoGenerateFileName();
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
@@ -215,6 +217,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
                     {
                         InputTextureB = Cast<UTexture2D>(AssetData.GetAsset());
+                        AutoGenerateFileName();
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
@@ -247,6 +250,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
                     {
                         InputTextureA = Cast<UTexture2D>(AssetData.GetAsset());
+                        AutoGenerateFileName();
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
@@ -468,6 +472,59 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     CreateTexture(PackageName, TargetResolution);
 
     return FReply::Handled();
+}
+
+void FTextureChannelPackerModule::AutoGenerateFileName()
+{
+    TArray<FString> InputNames;
+    if (InputTextureR.IsValid()) InputNames.Add(InputTextureR->GetName());
+    if (InputTextureG.IsValid()) InputNames.Add(InputTextureG->GetName());
+    if (InputTextureB.IsValid()) InputNames.Add(InputTextureB->GetName());
+    if (InputTextureA.IsValid()) InputNames.Add(InputTextureA->GetName());
+
+    if (InputNames.Num() == 0)
+    {
+        return;
+    }
+
+    // Find Common Prefix
+    FString CommonPrefix = InputNames[0];
+    for (int32 i = 1; i < InputNames.Num(); ++i)
+    {
+        const FString& CurrentName = InputNames[i];
+        int32 CommonLen = 0;
+        int32 MaxLen = FMath::Min(CommonPrefix.Len(), CurrentName.Len());
+        for (int32 CharIdx = 0; CharIdx < MaxLen; ++CharIdx)
+        {
+            if (CommonPrefix[CharIdx] == CurrentName[CharIdx])
+            {
+                CommonLen++;
+            }
+            else
+            {
+                break;
+            }
+        }
+        CommonPrefix = CommonPrefix.Left(CommonLen);
+    }
+
+    FString BaseName;
+    if (CommonPrefix.Len() >= 3)
+    {
+        BaseName = CommonPrefix;
+    }
+    else
+    {
+        BaseName = InputNames[0]; // First valid input
+    }
+
+    // Remove trailing underscores
+    while (BaseName.EndsWith(TEXT("_")))
+    {
+        BaseName.LeftChopInline(1);
+    }
+
+    OutputFileName = BaseName + TEXT("_ORM");
 }
 
 // Helper function to read and resize texture data
