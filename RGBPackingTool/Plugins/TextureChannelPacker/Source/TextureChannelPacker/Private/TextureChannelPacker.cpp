@@ -474,10 +474,11 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
 static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
 {
     TArray<uint8> ResultData;
-    ResultData.Init(0, TargetSize * TargetSize * 4); // RGBA (4 bytes per pixel)
+    // Lazy Allocation: Do not initialize ResultData yet.
 
     if (!SourceTex)
     {
+        ResultData.Init(0, TargetSize * TargetSize * 4);
         return ResultData;
     }
 
@@ -492,6 +493,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
+        ResultData.Init(0, TargetSize * TargetSize * 4);
         return ResultData;
     }
 
@@ -570,6 +572,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 
     // Convert FColor (BGRA) to RGBA uint8 array
+    ResultData.SetNumUninitialized(TargetSize * TargetSize * 4);
     uint8* DestData = ResultData.GetData();
     for (int32 i = 0; i < TargetSize * TargetSize; ++i)
     {
@@ -581,6 +584,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+    ResultData.Init(0, TargetSize * TargetSize * 4);
 #endif
 
     return ResultData;
