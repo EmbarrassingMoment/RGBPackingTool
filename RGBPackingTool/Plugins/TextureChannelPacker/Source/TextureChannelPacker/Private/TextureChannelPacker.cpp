@@ -547,7 +547,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
 
     if (!SourceTex)
     {
-        ResultData.Init(0, TargetSize * TargetSize * 4);
+        ResultData.Init(0, TargetSize * TargetSize);
         return ResultData;
     }
 
@@ -562,7 +562,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
-        ResultData.Init(0, TargetSize * TargetSize * 4);
+        ResultData.Init(0, TargetSize * TargetSize);
         return ResultData;
     }
 
@@ -650,20 +650,17 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
         ResizedColors = SrcColors;
     }
 
-    // Convert FColor (BGRA) to RGBA uint8 array
-    ResultData.SetNumUninitialized(TargetSize * TargetSize * 4);
+    // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
+    ResultData.SetNumUninitialized(TargetSize * TargetSize);
     uint8* DestData = ResultData.GetData();
     for (int32 i = 0; i < TargetSize * TargetSize; ++i)
     {
         const FColor& C = ResizedColors[i];
-        DestData[i * 4 + 0] = C.R;
-        DestData[i * 4 + 1] = C.G;
-        DestData[i * 4 + 2] = C.B;
-        DestData[i * 4 + 3] = C.A;
+        DestData[i] = C.R;
     }
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-    ResultData.Init(0, TargetSize * TargetSize * 4);
+    ResultData.Init(0, TargetSize * TargetSize);
 #endif
 
     return ResultData;
@@ -699,15 +696,15 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     {
         for (int32 i = 0; i < Resolution * Resolution; ++i)
         {
-            // Each Data array is RGBA.
-            // New.R = InputR_Data[i].R (Byte 0)
-            // New.G = InputG_Data[i].R (Byte 0)
-            // New.B = InputB_Data[i].R (Byte 0)
+            // Each Data array is now Grayscale (1 byte per pixel).
+            // New.R = InputR_Data[i]
+            // New.G = InputG_Data[i]
+            // New.B = InputB_Data[i]
 
-            uint8 R_Val = DataR[i * 4 + 0];
-            uint8 G_Val = DataG[i * 4 + 0];
-            uint8 B_Val = DataB[i * 4 + 0];
-            uint8 A_Val = bHasAlpha ? DataA[i * 4 + 0] : 255; // Use Red channel of Alpha input, or 255
+            uint8 R_Val = DataR[i];
+            uint8 G_Val = DataG[i];
+            uint8 B_Val = DataB[i];
+            uint8 A_Val = bHasAlpha ? DataA[i] : 255; // Use Red channel of Alpha input, or 255
 
             // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
             MipData[i * 4 + 0] = B_Val; // B
