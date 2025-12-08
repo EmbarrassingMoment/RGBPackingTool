@@ -40,6 +40,9 @@ private:
     /** Helper function to create the texture asset */
     void CreateTexture(const FString& PackageName, int32 Resolution);
 
+    /** Helper function to process a single channel and write directly to the output buffer */
+    void ProcessAndWriteChannel(UTexture2D* InputTex, uint8* OutputBuffer, int32 TargetResolution, int32 ChannelOffset, uint8 DefaultValue);
+
     /** Helper function to show notifications */
     void ShowNotification(const FText& Message, bool bSuccess);
 
