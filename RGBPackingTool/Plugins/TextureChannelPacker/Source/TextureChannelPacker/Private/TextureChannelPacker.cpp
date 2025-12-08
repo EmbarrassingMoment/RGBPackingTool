@@ -539,135 +539,131 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
     OutputFileName = BaseName + TEXT("_ORM");
 }
 
-void FTextureChannelPackerModule::ProcessAndWriteChannel(UTexture2D* InputTex, uint8* OutputBuffer, int32 TargetResolution, int32 ChannelOffset, uint8 DefaultValue)
+// Helper function to read and resize texture data
+static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
 {
-    int32 NumPixels = TargetResolution * TargetResolution;
+    TArray<uint8> ResultData;
+    // Lazy Allocation: Do not initialize ResultData yet.
 
-    // Case 1: No Input, fill with default value
-    if (!InputTex)
+    if (!SourceTex)
     {
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            OutputBuffer[i * 4 + ChannelOffset] = DefaultValue;
-        }
-        return;
+        ResultData.Init(0, TargetSize * TargetSize);
+        return ResultData;
     }
 
 #if WITH_EDITORONLY_DATA
     // Access Source Data
-    int32 SrcWidth = InputTex->Source.GetSizeX();
-    int32 SrcHeight = InputTex->Source.GetSizeY();
-    ETextureSourceFormat SrcFormat = InputTex->Source.GetFormat();
+    int32 SrcWidth = SourceTex->Source.GetSizeX();
+    int32 SrcHeight = SourceTex->Source.GetSizeY();
+    ETextureSourceFormat SrcFormat = SourceTex->Source.GetFormat();
 
     // Lock Mip 0
-    uint8* SrcData = InputTex->Source.LockMip(0);
+    uint8* SrcData = SourceTex->Source.LockMip(0);
     if (!SrcData)
     {
-        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *InputTex->GetName());
-        // Fallback to default
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            OutputBuffer[i * 4 + ChannelOffset] = DefaultValue;
-        }
-        return;
+        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
+        ResultData.Init(0, TargetSize * TargetSize);
+        return ResultData;
     }
 
-    // Convert to FColor array (Source Colors)
+    int32 NumPixels = SrcWidth * SrcHeight;
     TArray<FColor> SrcColors;
-    int32 SrcNumPixels = SrcWidth * SrcHeight;
-    SrcColors.SetNumUninitialized(SrcNumPixels);
+    SrcColors.SetNumUninitialized(NumPixels);
 
+    // Convert input to FColor (BGRA)
     switch (SrcFormat)
     {
     case TSF_BGRA8:
-        FMemory::Memcpy(SrcColors.GetData(), SrcData, SrcNumPixels * sizeof(FColor));
-        break;
-    case TSF_G8:
-        {
-            const uint8* GrayData = SrcData;
-            for (int32 i = 0; i < SrcNumPixels; ++i)
-            {
-                uint8 Val = GrayData[i];
-                SrcColors[i] = FColor(Val, Val, Val, 255);
-            }
-        }
-        break;
-    case TSF_G16:
-        {
-            const uint16* GrayData16 = (const uint16*)SrcData;
-            for (int32 i = 0; i < SrcNumPixels; ++i)
-            {
-                uint8 Val = (uint8)(GrayData16[i] >> 8);
-                SrcColors[i] = FColor(Val, Val, Val, 255);
-            }
-        }
-        break;
-    case TSF_R16F:
-        {
-            const FFloat16* Pixel16 = (const FFloat16*)SrcData;
-            for (int32 i = 0; i < SrcNumPixels; ++i)
-            {
-                uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
-                SrcColors[i] = FColor(Val, Val, Val, 255);
-            }
-        }
-        break;
-    case TSF_R32F:
-        {
-            const float* Pixel32 = (const float*)SrcData;
-            for (int32 i = 0; i < SrcNumPixels; ++i)
-            {
-                uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
-                SrcColors[i] = FColor(Val, Val, Val, 255);
-            }
-        }
-        break;
-    case TSF_RGBA32F:
-        {
-            const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
-            for (int32 i = 0; i < SrcNumPixels; ++i)
-            {
-                uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
-                SrcColors[i] = FColor(Val, Val, Val, 255);
-            }
-        }
-        break;
-    default:
-        UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *InputTex->GetName());
-        FMemory::Memset(SrcColors.GetData(), 0, SrcNumPixels * sizeof(FColor));
+    {
+        FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
         break;
     }
-
-    InputTex->Source.UnlockMip(0);
-
-    // Resize or Use Directly
-    if (SrcWidth == TargetResolution && SrcHeight == TargetResolution)
+    case TSF_G8:
     {
-        // Use SrcColors directly
+        const uint8* GrayData = SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            OutputBuffer[i * 4 + ChannelOffset] = SrcColors[i].R;
+            uint8 Val = GrayData[i];
+            SrcColors[i] = FColor(Val, Val, Val, 255);
         }
+        break;
+    }
+    case TSF_G16:
+    {
+        const uint16* GrayData16 = (const uint16*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)(GrayData16[i] >> 8);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+        break;
+    }
+    case TSF_R16F:
+    {
+        const FFloat16* Pixel16 = (const FFloat16*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+        break;
+    }
+    case TSF_R32F:
+    {
+        const float* Pixel32 = (const float*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+        break;
+    }
+    case TSF_RGBA32F:
+    {
+        const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+            uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
+            SrcColors[i] = FColor(Val, Val, Val, 255);
+        }
+        break;
+    }
+    default:
+    {
+        UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
+        FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
+        break;
+    }
+    }
+
+    SourceTex->Source.UnlockMip(0);
+
+    // Resize if necessary
+    TArray<FColor> ResizedColors;
+    if (SrcWidth != TargetSize || SrcHeight != TargetSize)
+    {
+        ResizedColors.SetNum(TargetSize * TargetSize);
+        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, false);
     }
     else
     {
-        // Resize
-        TArray<FColor> ResizedColors;
-        ResizedColors.SetNum(NumPixels);
-        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetResolution, TargetResolution, ResizedColors, false);
+        ResizedColors = SrcColors;
+    }
 
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            OutputBuffer[i * 4 + ChannelOffset] = ResizedColors[i].R;
-        }
+    // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
+    ResultData.SetNumUninitialized(TargetSize * TargetSize);
+    uint8* DestData = ResultData.GetData();
+    for (int32 i = 0; i < TargetSize * TargetSize; ++i)
+    {
+        const FColor& C = ResizedColors[i];
+        DestData[i] = C.R;
     }
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-    for (int32 i = 0; i < NumPixels; ++i)
-    {
-        OutputBuffer[i * 4 + ChannelOffset] = DefaultValue;
-    }
+    ResultData.Init(0, TargetSize * TargetSize);
 #endif
+
+    return ResultData;
 }
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
@@ -682,6 +678,14 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
+    // Get Resized Data for Inputs
+    TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
+    TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
+    TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+    TArray<uint8> DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
+
+    bool bHasAlpha = InputTextureA.IsValid();
+
 #if WITH_EDITORONLY_DATA
     // Initialize Source
     NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
@@ -690,18 +694,24 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
-        // Sequential Processing to save memory
-        // Red Input -> Offset 2 (in BGRA)
-        ProcessAndWriteChannel(InputTextureR.Get(), MipData, Resolution, 2, 0);
+        for (int32 i = 0; i < Resolution * Resolution; ++i)
+        {
+            // Each Data array is now Grayscale (1 byte per pixel).
+            // New.R = InputR_Data[i]
+            // New.G = InputG_Data[i]
+            // New.B = InputB_Data[i]
 
-        // Green Input -> Offset 1 (in BGRA)
-        ProcessAndWriteChannel(InputTextureG.Get(), MipData, Resolution, 1, 0);
+            uint8 R_Val = DataR[i];
+            uint8 G_Val = DataG[i];
+            uint8 B_Val = DataB[i];
+            uint8 A_Val = bHasAlpha ? DataA[i] : 255; // Use Red channel of Alpha input, or 255
 
-        // Blue Input -> Offset 0 (in BGRA)
-        ProcessAndWriteChannel(InputTextureB.Get(), MipData, Resolution, 0, 0);
-
-        // Alpha Input -> Offset 3 (in BGRA)
-        ProcessAndWriteChannel(InputTextureA.Get(), MipData, Resolution, 3, 255);
+            // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
+            MipData[i * 4 + 0] = B_Val; // B
+            MipData[i * 4 + 1] = G_Val; // G
+            MipData[i * 4 + 2] = R_Val; // R
+            MipData[i * 4 + 3] = A_Val; // A
+        }
     }
     NewTexture->Source.UnlockMip(0);
 #endif
