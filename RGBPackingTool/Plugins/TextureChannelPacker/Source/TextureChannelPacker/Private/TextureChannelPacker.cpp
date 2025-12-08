@@ -26,6 +26,7 @@
 #include "IContentBrowserSingleton.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Culture.h"
+#include "Misc/ScopedSlowTask.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -670,18 +671,78 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 {
     check(IsInGameThread());
 
+    // Initialize progress dialog with 5 steps total
+    FScopedSlowTask SlowTask(5.0f, GetLocalizedMessage(
+        TEXT("ProgressProcessing"),
+        TEXT("Processing Textures..."),
+        TEXT("テクスチャを処理中...")
+    ));
+    SlowTask.MakeDialog(true); // true = cancellable
+
     // Create the package
     UPackage* Package = CreatePackage(*PackageName);
     Package->FullyLoad();
+
+    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
+        TEXT("ProgressPackageCreated"),
+        TEXT("Package created. Loading input textures..."),
+        TEXT("パッケージを作成しました。入力テクスチャを読み込み中...")
+    ));
+
+    if (SlowTask.ShouldCancel())
+    {
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
 
     // Create the Texture2D
     FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
     // Get Resized Data for Inputs
+    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
+        TEXT("ProgressLoadingChannels"),
+        TEXT("Processing Red, Green, Blue channels..."),
+        TEXT("Red, Green, Blue チャンネルを処理中...")
+    ));
+
+    if (SlowTask.ShouldCancel())
+    {
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
+
     TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
     TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
     TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+
+    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
+        TEXT("ProgressLoadingAlpha"),
+        TEXT("Processing Alpha channel..."),
+        TEXT("Alpha チャンネルを処理中...")
+    ));
+
+    if (SlowTask.ShouldCancel())
+    {
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
+
     TArray<uint8> DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
 
     bool bHasAlpha = InputTextureA.IsValid();
@@ -689,6 +750,23 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 #if WITH_EDITORONLY_DATA
     // Initialize Source
     NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+
+    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
+        TEXT("ProgressWritingPixels"),
+        TEXT("Writing pixel data..."),
+        TEXT("ピクセルデータを書き込み中...")
+    ));
+
+    if (SlowTask.ShouldCancel())
+    {
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
 
     // Lock and Write Pixels directly to Source
     uint8* MipData = NewTexture->Source.LockMip(0);
@@ -715,6 +793,23 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     }
     NewTexture->Source.UnlockMip(0);
 #endif
+
+    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
+        TEXT("ProgressFinalizing"),
+        TEXT("Finalizing texture..."),
+        TEXT("テクスチャを最終処理中...")
+    ));
+
+    if (SlowTask.ShouldCancel())
+    {
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
 
     // Final settings
     NewTexture->CompressionSettings = GetSelectedCompressionSettings();
