@@ -636,9 +636,28 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     default:
     {
-        UE_LOG(LogTexturePacker, Warning, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
-        FMemory::Memset(SrcColors.GetData(), 0, NumPixels * sizeof(FColor));
-        break;
+        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
+        SourceTex->Source.UnlockMip(0);
+
+        FText ErrorMsg = GetLocalizedMessage(
+            TEXT("ErrorUnsupportedFormat"),
+            TEXT("Texture format not supported. Please convert to PNG or TGA."),
+            TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")
+        );
+
+        FNotificationInfo Info(ErrorMsg);
+        Info.ExpireDuration = 3.0f;
+        Info.Image = FAppStyle::GetBrush("Icons.ErrorWithColor");
+
+        TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
+        if (NotificationItem.IsValid())
+        {
+            NotificationItem->SetCompletionState(SNotificationItem::CS_Fail);
+            NotificationItem->ExpireAndFadeout();
+        }
+
+        ResultData.Init(0, TargetSize * TargetSize);
+        return ResultData;
     }
     }
 
