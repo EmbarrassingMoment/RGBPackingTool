@@ -27,7 +27,7 @@ private:
     TWeakObjectPtr<UTexture2D> InputTextureA;
 
     /** Output Settings */
-    FString OutputPackagePath = "/Game/Textures/Packed/";
+    FString OutputPackagePath = "/Game/";
     FString OutputFileName = "T_Packed_Texture";
     int32 TargetResolution = 2048;
 
