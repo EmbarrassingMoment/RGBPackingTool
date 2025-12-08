@@ -237,6 +237,11 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 [
                     SNew(STextBlock)
                     .Text(GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")))
+                    .ToolTipText(GetLocalizedMessage(
+                        TEXT("AlphaChannelTooltip"),
+                        TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
+                        TEXT("空の場合は白 (255) で塗りつぶされ、不透明になります。独自のアルファマスクを使用する場合はテクスチャを指定してください。")
+                    ))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
