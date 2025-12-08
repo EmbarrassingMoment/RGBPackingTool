@@ -819,7 +819,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     // Final settings
     NewTexture->CompressionSettings = GetSelectedCompressionSettings();
 
-    // TC_Defaultが選ばれた場合でも、チャンネルパッキング用途のため強制的にリニア（sRGB=false）として扱う
+    // Even if TC_Default is selected, treat it as linear (sRGB=false) for channel packing purposes.
     NewTexture->SRGB = false;
 
     NewTexture->UpdateResource();
