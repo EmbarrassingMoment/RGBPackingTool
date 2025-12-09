@@ -24,6 +24,7 @@
 #include "Widgets/Images/SImage.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
+#include "ThumbnailRendering/ThumbnailManager.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Culture.h"
 #include "Misc/ScopedSlowTask.h"
@@ -156,6 +157,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
+                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
                 ]
             ]
 
@@ -189,6 +191,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
+                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
                 ]
             ]
 
@@ -222,6 +225,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
+                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
                 ]
             ]
 
@@ -260,6 +264,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     })
                     .AllowClear(true)
                     .DisplayThumbnail(true)
+                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
                 ]
             ]
 
