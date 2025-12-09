@@ -536,6 +536,12 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
         BaseName = InputNames[0]; // First valid input
     }
 
+    // Enforce "T_" prefix
+    if (!BaseName.StartsWith(TEXT("T_")))
+    {
+        BaseName = TEXT("T_") + BaseName;
+    }
+
     // Remove trailing underscores
     while (BaseName.EndsWith(TEXT("_")))
     {
