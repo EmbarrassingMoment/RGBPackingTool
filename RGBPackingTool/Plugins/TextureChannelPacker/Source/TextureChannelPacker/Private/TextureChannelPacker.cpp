@@ -408,7 +408,14 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 [
                     SNew(SEditableTextBox)
                     .Text_Lambda([this] { return FText::FromString(OutputFileName); })
-                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputFileName = NewText.ToString(); })
+                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type CommitType)
+                    {
+                        OutputFileName = NewText.ToString();
+                        if (CommitType == ETextCommit::OnEnter || CommitType == ETextCommit::OnUserMovedFocus)
+                        {
+                            bFileNameManuallyEdited = true;
+                        }
+                    })
                 ]
             ]
 
@@ -494,6 +501,11 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
 
 void FTextureChannelPackerModule::AutoGenerateFileName()
 {
+    if (bFileNameManuallyEdited)
+    {
+        return;
+    }
+
     TArray<FString> InputNames;
     if (InputTextureR.IsValid()) InputNames.Add(InputTextureR->GetName());
     if (InputTextureG.IsValid()) InputNames.Add(InputTextureG->GetName());
