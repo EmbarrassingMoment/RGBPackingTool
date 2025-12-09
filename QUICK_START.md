@@ -4,6 +4,8 @@
 
 **Zero to Packed Texture in 10 seconds.**
 
+![Tool Overview](Docs/Images/ui_overview.png)
+
 ## 1. Installation
 
 1.  Copy the `TextureChannelPacker` folder into your project's `Plugins` directory.
