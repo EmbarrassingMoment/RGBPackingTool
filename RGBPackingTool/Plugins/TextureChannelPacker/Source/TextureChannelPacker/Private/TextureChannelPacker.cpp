@@ -130,7 +130,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Red Channel Input
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -164,7 +164,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Green Channel Input
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -198,7 +198,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Blue Channel Input
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -232,7 +232,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Alpha Channel Input
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -271,7 +271,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Separator
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(5.0f, 5.0f)
             [
                 SNew(SSeparator)
             ]
@@ -279,7 +279,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Output Settings Header
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(5.0f, 5.0f)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("OutputSettingsLabel", "Output Settings"))
@@ -289,7 +289,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Resolution
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -318,7 +318,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Compression Settings
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -363,7 +363,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // Output Path
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -397,7 +397,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             // File Name
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(10.0f, 5.0f)
+            .Padding(2.0f)
             [
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
@@ -424,19 +424,10 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 ]
             ]
 
-            // Spacer
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                SNew(SSpacer)
-                .Size(FVector2D(0.0f, 10.0f))
-            ]
-
             // Generate Button
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(20.0f)
+            .Padding(10.0f)
             .HAlign(HAlign_Fill)
             [
                 SNew(SButton)
