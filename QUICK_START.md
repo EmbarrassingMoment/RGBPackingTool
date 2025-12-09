@@ -3,6 +3,7 @@
 # Quick Start Guide
 
 **Zero to Packed Texture in 10 seconds.**
+
 ![Tool Overview](Docs/Images/ui_overview.png)
 
 ## 1. Installation
