@@ -4,7 +4,7 @@
 
 **テクスチャをパックするワークフロー**
 
-![Tool Overview](Docs/Images/ui_overview.png)
+![Tool Overview](Docs/Images/workflow.gif)
 
 ## 1. インストール (簡易版)
 
