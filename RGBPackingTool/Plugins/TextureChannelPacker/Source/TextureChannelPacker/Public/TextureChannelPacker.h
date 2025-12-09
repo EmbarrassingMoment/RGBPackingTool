@@ -49,4 +49,7 @@ private:
 
     /** Helper to get the enum value */
     TextureCompressionSettings GetSelectedCompressionSettings() const;
+
+    /** Flag to track if the user has manually edited the output filename */
+    bool bFileNameManuallyEdited = false;
 };
