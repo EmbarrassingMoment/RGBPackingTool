@@ -109,6 +109,28 @@ The tool supports a variety of source texture formats, ensuring compatibility wi
 | **Grayscale** | **Height Maps**, Single Masks | Keeps values linear. Good for single-channel data. |
 | **Default** | Color Textures | Standard compression. Usually for Albedo/Diffuse. Not recommended for channel packing. |
 
+## FAQ
+
+**Q: Can I use this plugin at runtime (in-game)?**
+**A:** No, this is an **Editor-only** tool designed for asset creation during development. It does not run in packaged games.
+
+**Q: Do input textures need to be the same resolution?**
+**A:** No. The tool automatically resizes all inputs (e.g., mixing 1024p and 2048p sources) to match your specified target resolution using high-quality sampling.
+
+**Q: What happens if I leave a slot empty?**
+**A:**
+* **Red, Green, Blue:** Filled with **Black (0)**.
+* **Alpha:** Filled with **White (255 / Opaque)** by default, so you don't need to create a dummy white texture for opacity.
+
+**Q: Why is 'sRGB' disabled on the output texture?**
+**A:** Channel-packed textures (like ORM maps) contain data, not color, so they must be Linear (sRGB = false). This tool automatically applies the correct settings (Compression: Masks) for you.
+
+**Q: Does it support high-resolution textures like 8K?**
+**A:** Yes. The processing pipeline uses memory-optimized techniques to safely handle large assets like 4K and 8K textures.
+
+**Q: What input formats are supported?**
+**A:** It supports standard formats (PNG, TGA, PSD) as well as **16-bit Grayscale** and **32-bit Float (e.g., EXR)** formats, ensuring high precision for Heightmaps and SDFs.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
