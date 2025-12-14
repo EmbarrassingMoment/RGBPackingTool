@@ -2,6 +2,8 @@
 
 # TextureChannelPacker
 
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771)
+
 **TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
 
 >  **First time? Check out the [Quick Start Guide](QUICK_START.md) to get started in seconds!**
@@ -52,6 +54,13 @@ The tool supports a variety of source texture formats, ensuring compatibility wi
 - **Floating Point Textures**: Floating point textures (e.g., SDF, Heightmaps) are **clamped** to the `0.0 - 1.0` range during packing. Values outside this range will be clipped.
 
 ## Installation
+
+### Option A: Install via Fab (Recommended)
+The easiest way to install is via the Fab Store. This ensures you get the correct version for your engine.
+[**Get it on Fab**](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771)
+
+### Option B: Manual Installation (GitHub)
+If you want the latest development version or need to modify the source code:
 
 1. **Clone or Download**:
    Download this repository and place the `TextureChannelPacker` folder into your project's `Plugins` directory.
