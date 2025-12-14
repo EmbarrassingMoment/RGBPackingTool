@@ -2,6 +2,8 @@
 
 # TextureChannelPacker
 
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771)
+
 **TextureChannelPacker** は、個別のグレースケールテクスチャを1枚の出力テクスチャの R (赤)、G (緑)、B (青)、A (アルファ) チャンネルに効率的にパッキングするための Unreal Engine 5.7 用プラグインです。ORM（オクルージョン、ラフネス、メタリック）マップや、その他のチャンネルパッキングテクスチャを作成する際によく使用されます。
 
 >  **初めての方はこちら！ [クイックスタートガイド](QUICK_START.ja.md) をご覧ください。**
@@ -52,6 +54,13 @@
 - **浮動小数点テクスチャ**: 浮動小数点テクスチャ（SDFやハイトマップ等）は、パッキング時に **0.0 - 1.0 の範囲にクランプ（切り捨て）** されます。この範囲外の値はクリップされます。
 
 ## インストール方法
+
+### オプション A: Fab からインストール (推奨)
+Fab ストアから入手するのが最も簡単で確実です。
+[**Fab ストアページはこちら**](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771)
+
+### オプション B: 手動インストール (GitHub)
+最新の開発版が必要な場合や、ソースコードを編集したい場合はこちらの手順を行ってください：
 
 1. **クローンまたはダウンロード**:
    このリポジトリをダウンロードし、`TextureChannelPacker` フォルダをプロジェクトの `Plugins` ディレクトリに配置してください。
