@@ -596,6 +596,34 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 
     int32 NumPixels = SrcWidth * SrcHeight;
+
+    // Optimization: Fast path for same-resolution textures
+    if (SrcWidth == TargetSize && SrcHeight == TargetSize)
+    {
+        if (SrcFormat == TSF_G8)
+        {
+            // Direct copy for Grayscale input
+            ResultData.SetNumUninitialized(NumPixels);
+            FMemory::Memcpy(ResultData.GetData(), SrcData, NumPixels);
+            SourceTex->Source.UnlockMip(0);
+            return ResultData;
+        }
+        else if (SrcFormat == TSF_BGRA8)
+        {
+            // Direct Red-channel extraction for BGRA input
+            ResultData.SetNumUninitialized(NumPixels);
+            uint8* DestData = ResultData.GetData();
+            const uint8* SrcPtr = SrcData;
+            for (int32 i = 0; i < NumPixels; ++i)
+            {
+                DestData[i] = SrcPtr[2]; // R channel in BGRA
+                SrcPtr += 4;
+            }
+            SourceTex->Source.UnlockMip(0);
+            return ResultData;
+        }
+    }
+
     TArray<FColor> SrcColors;
     SrcColors.SetNumUninitialized(NumPixels);
 
@@ -695,7 +723,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     else
     {
-        ResizedColors = SrcColors;
+        ResizedColors = MoveTemp(SrcColors);
     }
 
     // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
