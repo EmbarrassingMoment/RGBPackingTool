@@ -797,9 +797,23 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         return;
     }
 
-    TArray<uint8> DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
-    TArray<uint8> DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
-    TArray<uint8> DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+    TArray<uint8> DataR;
+    if (InputTextureR.IsValid())
+    {
+        DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
+    }
+
+    TArray<uint8> DataG;
+    if (InputTextureG.IsValid())
+    {
+        DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
+    }
+
+    TArray<uint8> DataB;
+    if (InputTextureB.IsValid())
+    {
+        DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
+    }
 
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
         TEXT("ProgressLoadingAlpha"),
@@ -818,9 +832,11 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         return;
     }
 
-    TArray<uint8> DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
-
-    bool bHasAlpha = InputTextureA.IsValid();
+    TArray<uint8> DataA;
+    if (InputTextureA.IsValid())
+    {
+        DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
+    }
 
 #if WITH_EDITORONLY_DATA
     // Initialize Source
@@ -847,6 +863,11 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
+        const uint8* PtrR = DataR.Num() > 0 ? DataR.GetData() : nullptr;
+        const uint8* PtrG = DataG.Num() > 0 ? DataG.GetData() : nullptr;
+        const uint8* PtrB = DataB.Num() > 0 ? DataB.GetData() : nullptr;
+        const uint8* PtrA = DataA.Num() > 0 ? DataA.GetData() : nullptr;
+
         for (int32 i = 0; i < Resolution * Resolution; ++i)
         {
             // Each Data array is now Grayscale (1 byte per pixel).
@@ -854,10 +875,10 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
             // New.G = InputG_Data[i]
             // New.B = InputB_Data[i]
 
-            uint8 R_Val = DataR[i];
-            uint8 G_Val = DataG[i];
-            uint8 B_Val = DataB[i];
-            uint8 A_Val = bHasAlpha ? DataA[i] : 255; // Use Red channel of Alpha input, or 255
+            uint8 R_Val = PtrR ? PtrR[i] : 0;
+            uint8 G_Val = PtrG ? PtrG[i] : 0;
+            uint8 B_Val = PtrB ? PtrB[i] : 0;
+            uint8 A_Val = PtrA ? PtrA[i] : 255; // Use Red channel of Alpha input, or 255
 
             // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
             MipData[i * 4 + 0] = B_Val; // B
