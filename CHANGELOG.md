@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-12-09
+
+### Fixed
+- **Smart Naming**: Fixed an issue where auto-generation would overwrite manually edited filenames. It now respects user input.
+- **Color Space**: Forced `SRGB = false` on generated textures to ensure correct linear values for packed channels.
+- **Packaging**: Added `PlatformAllowList` to `.uplugin` to prevent packaging errors on mobile platforms.
+
+### Changed
+- **Fab Preparation**: Updated `.uplugin` metadata (EngineVersion, Installed) for Fab store submission.
+- **License**: Updated Copyright year to 2026.
+
 ## [1.0.0] - 2025-12-08
 
 ### Added

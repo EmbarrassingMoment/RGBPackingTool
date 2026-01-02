@@ -7,6 +7,17 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [1.0.1] - 2025-12-09
+
+### 修正 (Fixed)
+- **スマート命名機能**: 手動で編集したファイル名が自動生成によって上書きされる問題を修正しました。ユーザー入力を優先します。
+- **カラースペース**: 生成されるテクスチャの `SRGB` を強制的に `false` に設定し、パックされたチャンネルのリニア値を保証するようにしました。
+- **パッケージング**: `.uplugin` に `PlatformAllowList` を追加し、モバイルプラットフォームでのパッケージングエラーを防止しました。
+
+### 変更 (Changed)
+- **Fab 準備**: Fab ストアへの提出用に `.uplugin` メタデータ (EngineVersion, Installed) を更新しました。
+- **ライセンス**: Copyright の年を 2026 年に更新しました。
+
 ## [1.0.0] - 2025-12-08
 
 ### 追加 (Added)
