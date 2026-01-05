@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-[![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com)
+[![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com)
 
 [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin)
 
