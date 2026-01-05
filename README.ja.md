@@ -4,6 +4,14 @@
 
 [![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+
+[![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com)
+
+[![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin)
+
+[![Version](https://img.shields.io/badge/Version-1.0.1-green?style=for-the-badge)](CHANGELOG.ja.md)
+
 **TextureChannelPacker** は、個別のグレースケールテクスチャを1枚の出力テクスチャの R (赤)、G (緑)、B (青)、A (アルファ) チャンネルに効率的にパッキングするための Unreal Engine 5.7 用プラグインです。ORM（オクルージョン、ラフネス、メタリック）マップや、その他のチャンネルパッキングテクスチャを作成する際によく使用されます。
 
 >  **初めての方はこちら！ [クイックスタートガイド](QUICK_START.ja.md) をご覧ください。**
