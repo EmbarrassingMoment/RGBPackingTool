@@ -28,6 +28,8 @@
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Culture.h"
 #include "Misc/ScopedSlowTask.h"
+#include "DesktopPlatformModule.h"
+#include "TextureChannelPackerExporter.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -54,6 +56,14 @@ void FTextureChannelPackerModule::StartupModule()
     CompressionOptions.Add(MakeShared<FString>("Grayscale"));
     CompressionOptions.Add(MakeShared<FString>("Default"));
     CurrentCompressionOption = CompressionOptions[0];
+
+    // Initialize Export Options
+    ExportFormatOptions.Add(MakeShared<FString>("PNG"));
+    ExportFormatOptions.Add(MakeShared<FString>("EXR"));
+    CurrentExportFormat = ExportFormatOptions[0];
+
+    // Default Export Path
+    ExportPath = FPaths::ProjectSavedDir();
 
     // Register Nomad Tab
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TextureChannelPackerTabName, FOnSpawnTab::CreateRaw(this, &FTextureChannelPackerModule::OnSpawnPluginTab))
@@ -431,6 +441,116 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 SNew(SSpacer)
                 .Size(FVector2D(0.0f, 10.0f))
+            ]
+
+            // Export to File Checkbox
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([this] { return bExportToFile ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                .OnCheckStateChanged_Lambda([this](ECheckBoxState NewState) { bExportToFile = (NewState == ECheckBoxState::Checked); })
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("ExportToFileLabel", "Export to File"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+            ]
+
+            // Export Format (PNG/EXR)
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, 10.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("ExportFormatLabel", "Format"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                [
+                    SNew(SComboBox<TSharedPtr<FString>>)
+                    .OptionsSource(&ExportFormatOptions)
+                    .OnSelectionChanged_Lambda([this](TSharedPtr<FString> NewSelection, ESelectInfo::Type)
+                    {
+                        if (NewSelection.IsValid())
+                        {
+                            CurrentExportFormat = NewSelection;
+                            bExportAsPNG = (*NewSelection == "PNG");
+                        }
+                    })
+                    .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+                    {
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
+                    })
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]()
+                        {
+                            return CurrentExportFormat.IsValid() ? FText::FromString(*CurrentExportFormat) : FText::GetEmpty();
+                        })
+                    ]
+                ]
+            ]
+
+            // Export Path
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("ExportPathLabel", "Export Path"))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    [
+                        SNew(SEditableTextBox)
+                        .Text_Lambda([this] { return FText::FromString(ExportPath); })
+                        .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { ExportPath = NewText.ToString(); })
+                    ]
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SButton)
+                        .Text(LOCTEXT("BrowseFolder", "Browse"))
+                        .OnClicked_Lambda([this]() {
+                            IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+                            if (DesktopPlatform)
+                            {
+                                FString FolderName;
+                                if (DesktopPlatform->OpenDirectoryDialog(
+                                    nullptr,
+                                    LOCTEXT("SelectExportFolder", "Select Export Folder").ToString(),
+                                    ExportPath,
+                                    FolderName
+                                ))
+                                {
+                                    ExportPath = FolderName;
+                                }
+                            }
+                            return FReply::Handled();
+                        })
+                    ]
+                ]
             ]
 
             // Generate Button
@@ -919,7 +1039,33 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(NewTexture);
 
-    FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
+    // Export to File if enabled
+    if (bExportToFile)
+    {
+        FString Extension = bExportAsPNG ? TEXT(".png") : TEXT(".exr");
+        FString FullPath = FPaths::Combine(ExportPath, OutputFileName + Extension);
+
+        if (FTextureChannelPackerExporter::ExportTextureToFile(NewTexture, FullPath, bExportAsPNG))
+        {
+            FText ExportMsg = GetLocalizedMessage(
+                TEXT("SuccessExportSaved"),
+                TEXT("Texture exported to: {0}"),
+                TEXT("テクスチャをエクスポートしました: {0}")
+            );
+            ShowNotification(FText::Format(ExportMsg, FText::FromString(FullPath)), true);
+        }
+        else
+        {
+            FText ExportFailMsg = GetLocalizedMessage(
+                TEXT("ErrorExportFailed"),
+                TEXT("Failed to export texture to file."),
+                TEXT("テクスチャのファイルエクスポートに失敗しました。")
+            );
+            ShowNotification(ExportFailMsg, false);
+        }
+    }
+
+    FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Asset Saved: {0}"), TEXT("テクスチャアセットを保存しました: {0}"));
     ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
 }
 
