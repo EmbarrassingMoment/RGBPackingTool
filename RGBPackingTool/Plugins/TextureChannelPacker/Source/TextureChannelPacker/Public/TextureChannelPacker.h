@@ -52,4 +52,13 @@ private:
 
     /** Flag to track if the user has manually edited the output filename */
     bool bFileNameManuallyEdited = false;
+
+    /** Export Settings */
+    bool bExportToFile = false;
+    bool bExportAsPNG = true; // true = PNG, false = EXR
+    FString ExportPath;
+
+    /** Export Options */
+    TArray<TSharedPtr<FString>> ExportFormatOptions;
+    TSharedPtr<FString> CurrentExportFormat;
 };
