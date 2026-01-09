@@ -462,9 +462,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(10.0f, 5.0f)
-            .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
             [
                 SNew(SHorizontalBox)
+                .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
@@ -505,9 +505,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(10.0f, 5.0f)
-            .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
             [
                 SNew(SVerticalBox)
+                .Visibility_Lambda([this]() { return bExportToFile ? EVisibility::Visible : EVisibility::Collapsed; })
                 + SVerticalBox::Slot()
                 .AutoHeight()
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
