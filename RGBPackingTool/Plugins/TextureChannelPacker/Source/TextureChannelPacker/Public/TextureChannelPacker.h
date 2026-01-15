@@ -50,6 +50,9 @@ private:
     /** Helper to get the enum value */
     TextureCompressionSettings GetSelectedCompressionSettings() const;
 
+    /** Helper function to create a channel input slot UI */
+    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText = FText::GetEmpty());
+
     /** Flag to track if the user has manually edited the output filename */
     bool bFileNameManuallyEdited = false;
 };
