@@ -94,6 +94,47 @@ void FTextureChannelPackerModule::ShutdownModule()
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 }
 
+TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText)
+{
+    // Capture the address of the member variable to update it inside the lambda
+    TWeakObjectPtr<UTexture2D>* TexturePtr = &TargetTexturePtr;
+
+    TSharedPtr<STextBlock> LabelWidget = SNew(STextBlock)
+        .Text(LabelText)
+        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"));
+
+    if (!TooltipText.IsEmpty())
+    {
+        LabelWidget->SetToolTipText(TooltipText);
+    }
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+        [
+            LabelWidget.ToSharedRef()
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SObjectPropertyEntryBox)
+            .AllowedClass(UTexture2D::StaticClass())
+            .ObjectPath_Lambda([TexturePtr]()
+            {
+                return TexturePtr->IsValid() ? TexturePtr->Get()->GetPathName() : FString();
+            })
+            .OnObjectChanged_Lambda([this, TexturePtr](const FAssetData& AssetData)
+            {
+                *TexturePtr = Cast<UTexture2D>(AssetData.GetAsset());
+                AutoGenerateFileName();
+            })
+            .AllowClear(true)
+            .DisplayThumbnail(true)
+            .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
+        ];
+}
+
 TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs)
 {
     TSharedRef<SComboButton> PathPickerComboButton = SNew(SComboButton)
@@ -132,33 +173,10 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .AutoHeight()
             .Padding(10.0f)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SObjectPropertyEntryBox)
-                    .AllowedClass(UTexture2D::StaticClass())
-                    .ObjectPath_Lambda([this]()
-                    {
-                        return InputTextureR.IsValid() ? InputTextureR->GetPathName() : FString();
-                    })
-                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
-                    {
-                        InputTextureR = Cast<UTexture2D>(AssetData.GetAsset());
-                        AutoGenerateFileName();
-                    })
-                    .AllowClear(true)
-                    .DisplayThumbnail(true)
-                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
-                ]
+                CreateChannelInputSlot(
+                    GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")),
+                    InputTextureR
+                )
             ]
 
             // Green Channel Input
@@ -166,33 +184,10 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .AutoHeight()
             .Padding(10.0f)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SObjectPropertyEntryBox)
-                    .AllowedClass(UTexture2D::StaticClass())
-                    .ObjectPath_Lambda([this]()
-                    {
-                        return InputTextureG.IsValid() ? InputTextureG->GetPathName() : FString();
-                    })
-                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
-                    {
-                        InputTextureG = Cast<UTexture2D>(AssetData.GetAsset());
-                        AutoGenerateFileName();
-                    })
-                    .AllowClear(true)
-                    .DisplayThumbnail(true)
-                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
-                ]
+                CreateChannelInputSlot(
+                    GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")),
+                    InputTextureG
+                )
             ]
 
             // Blue Channel Input
@@ -200,72 +195,26 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .AutoHeight()
             .Padding(10.0f)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SObjectPropertyEntryBox)
-                    .AllowedClass(UTexture2D::StaticClass())
-                    .ObjectPath_Lambda([this]()
-                    {
-                        return InputTextureB.IsValid() ? InputTextureB->GetPathName() : FString();
-                    })
-                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
-                    {
-                        InputTextureB = Cast<UTexture2D>(AssetData.GetAsset());
-                        AutoGenerateFileName();
-                    })
-                    .AllowClear(true)
-                    .DisplayThumbnail(true)
-                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
-                ]
+                CreateChannelInputSlot(
+                    GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")),
+                    InputTextureB
+                )
             ]
 
-            // Alpha Channel Input
+            // Alpha Channel Input (with Tooltip)
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(10.0f)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")))
-                    .ToolTipText(GetLocalizedMessage(
+                CreateChannelInputSlot(
+                    GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")),
+                    InputTextureA,
+                    GetLocalizedMessage(
                         TEXT("AlphaChannelTooltip"),
                         TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
                         TEXT("空の場合は白 (255) で塗りつぶされ、不透明になります。独自のアルファマスクを使用する場合はテクスチャを指定してください。")
-                    ))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SObjectPropertyEntryBox)
-                    .AllowedClass(UTexture2D::StaticClass())
-                    .ObjectPath_Lambda([this]()
-                    {
-                        return InputTextureA.IsValid() ? InputTextureA->GetPathName() : FString();
-                    })
-                    .OnObjectChanged_Lambda([this](const FAssetData& AssetData)
-                    {
-                        InputTextureA = Cast<UTexture2D>(AssetData.GetAsset());
-                        AutoGenerateFileName();
-                    })
-                    .AllowClear(true)
-                    .DisplayThumbnail(true)
-                    .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
-                ]
+                    )
+                )
             ]
 
             // Separator
