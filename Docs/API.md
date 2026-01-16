@@ -1,3 +1,5 @@
+[日本語 (Japanese)](API.ja.md)
+
 # TextureChannelPacker API Documentation
 
 This document provides technical details about the `TextureChannelPacker` module, intended for developers who wish to understand the internal architecture, extend functionality, or contribute to the project.
