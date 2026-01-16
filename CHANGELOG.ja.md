@@ -7,6 +7,13 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [1.1.0] - 2026-01-16
+
+### 追加 (Added)
+- **並列処理 (Parallel Processing)**: `ParallelFor` を使用したテクスチャチャンネルのリサイズ・変換処理のマルチスレッド化を実装し、生成速度を向上させました。
+- **キャンセル機能 (Cancellable Progress)**: キャンセルボタン付きの進捗ダイアログを追加し、テクスチャ生成処理を中断できるようにしました。
+- **対応フォーマットの拡張 (Extended Format Support)**: `TSF_RGBA32F` (Linear Color) 入力テクスチャのサポートを追加しました。
+
 ## [1.0.1] - 2025-12-09
 
 ### 修正 (Fixed)
