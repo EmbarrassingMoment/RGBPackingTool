@@ -28,6 +28,7 @@
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Culture.h"
 #include "Misc/ScopedSlowTask.h"
+#include "Async/ParallelFor.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -517,59 +518,111 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
     OutputFileName = BaseName + TEXT("_ORM");
 }
 
-// Helper function to read and resize texture data
-static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSize)
+// Struct to hold raw texture data extracted from UTexture2D
+struct FTextureRawData
 {
-    TArray<uint8> ResultData;
-    // Lazy Allocation: Do not initialize ResultData yet.
+    TArray<uint8> RawData;
+    int32 Width = 0;
+    int32 Height = 0;
+    ETextureSourceFormat Format = TSF_Invalid;
+    FString TextureName;
+    bool bIsValid = false;
+};
 
+// Struct to hold processed result
+struct FTextureProcessResult
+{
+    TArray<uint8> ProcessedData;
+    FText ErrorMessage;
+    bool bSuccess = true;
+};
+
+// Helper to extract raw data on Game Thread
+static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
+{
+    FTextureRawData Result;
     if (!SourceTex)
     {
-        ResultData.Init(0, TargetSize * TargetSize);
-        return ResultData;
+        return Result;
     }
+
+    Result.TextureName = SourceTex->GetName();
 
 #if WITH_EDITORONLY_DATA
-    // Access Source Data
-    int32 SrcWidth = SourceTex->Source.GetSizeX();
-    int32 SrcHeight = SourceTex->Source.GetSizeY();
-    ETextureSourceFormat SrcFormat = SourceTex->Source.GetFormat();
+    Result.Width = SourceTex->Source.GetSizeX();
+    Result.Height = SourceTex->Source.GetSizeY();
+    Result.Format = SourceTex->Source.GetFormat();
 
-    // Lock Mip 0
     uint8* SrcData = SourceTex->Source.LockMip(0);
-    if (!SrcData)
+    if (SrcData)
     {
-        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *SourceTex->GetName());
-        ResultData.Init(0, TargetSize * TargetSize);
-        return ResultData;
+        int32 BytesPerPixel = SourceTex->Source.GetBytesPerPixel();
+        int32 TotalBytes = Result.Width * Result.Height * BytesPerPixel;
+
+        // Handle compressed formats or unexpected byte counts if needed,
+        // but typically LockMip returns raw bytes based on format.
+        // For TSF_BGRA8 -> 4 bytes. TSF_G8 -> 1 byte.
+        // We trust the format implies the size.
+        // However, GetBytesPerPixel might return 0 for some formats?
+        // Let's rely on calculating from format if needed, but GetBytesPerPixel is safer if valid.
+
+        if (TotalBytes > 0)
+        {
+            Result.RawData.SetNumUninitialized(TotalBytes);
+            FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
+            Result.bIsValid = true;
+        }
+    }
+    else
+    {
+        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *Result.TextureName);
+    }
+    SourceTex->Source.UnlockMip(0);
+#else
+    UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+#endif
+
+    return Result;
+}
+
+// Helper function to process texture data (Thread Safe)
+static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Input, int32 TargetSize)
+{
+    FTextureProcessResult Result;
+    // Default to zero-filled array
+    Result.ProcessedData.Init(0, TargetSize * TargetSize);
+
+    if (!Input.bIsValid)
+    {
+        return Result; // Empty/Invalid input results in black channel (or white if handled by caller default)
     }
 
+    int32 SrcWidth = Input.Width;
+    int32 SrcHeight = Input.Height;
     int32 NumPixels = SrcWidth * SrcHeight;
+    const uint8* SrcData = Input.RawData.GetData();
 
     // Optimization: Fast path for same-resolution textures
     if (SrcWidth == TargetSize && SrcHeight == TargetSize)
     {
-        if (SrcFormat == TSF_G8)
+        if (Input.Format == TSF_G8)
         {
             // Direct copy for Grayscale input
-            ResultData.SetNumUninitialized(NumPixels);
-            FMemory::Memcpy(ResultData.GetData(), SrcData, NumPixels);
-            SourceTex->Source.UnlockMip(0);
-            return ResultData;
+            Result.ProcessedData = Input.RawData;
+            return Result;
         }
-        else if (SrcFormat == TSF_BGRA8)
+        else if (Input.Format == TSF_BGRA8)
         {
             // Direct Red-channel extraction for BGRA input
-            ResultData.SetNumUninitialized(NumPixels);
-            uint8* DestData = ResultData.GetData();
+            Result.ProcessedData.SetNumUninitialized(NumPixels);
+            uint8* DestData = Result.ProcessedData.GetData();
             const uint8* SrcPtr = SrcData;
             for (int32 i = 0; i < NumPixels; ++i)
             {
                 DestData[i] = SrcPtr[2]; // R channel in BGRA
                 SrcPtr += 4;
             }
-            SourceTex->Source.UnlockMip(0);
-            return ResultData;
+            return Result;
         }
     }
 
@@ -577,11 +630,11 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     SrcColors.SetNumUninitialized(NumPixels);
 
     // Convert input to FColor (BGRA)
-    switch (SrcFormat)
+    switch (Input.Format)
     {
     case TSF_BGRA8:
     {
-        FMemory::Memcpy(SrcColors.GetData(), SrcData, NumPixels * sizeof(FColor));
+        FMemory::Memcpy(SrcColors.GetData(), SrcData, Input.RawData.Num());
         break;
     }
     case TSF_G8:
@@ -596,6 +649,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     case TSF_G16:
     {
+        // 16-bit Grayscale: 2 bytes per pixel
         const uint16* GrayData16 = (const uint16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
@@ -606,6 +660,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     case TSF_R16F:
     {
+        // Half-float: 2 bytes per pixel
         const FFloat16* Pixel16 = (const FFloat16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
@@ -616,6 +671,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     case TSF_R32F:
     {
+        // Float: 4 bytes per pixel
         const float* Pixel32 = (const float*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
@@ -626,6 +682,7 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     case TSF_RGBA32F:
     {
+        // Linear Color: 16 bytes per pixel
         const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
@@ -636,32 +693,16 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
     default:
     {
-        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SrcFormat, *SourceTex->GetName());
-        SourceTex->Source.UnlockMip(0);
-
-        FText ErrorMsg = GetLocalizedMessage(
+        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)Input.Format, *Input.TextureName);
+        Result.bSuccess = false;
+        Result.ErrorMessage = GetLocalizedMessage(
             TEXT("ErrorUnsupportedFormat"),
             TEXT("Texture format not supported. Please convert to PNG or TGA."),
             TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")
         );
-
-        FNotificationInfo Info(ErrorMsg);
-        Info.ExpireDuration = 3.0f;
-        Info.Image = FAppStyle::GetBrush("Icons.ErrorWithColor");
-
-        TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-        if (NotificationItem.IsValid())
-        {
-            NotificationItem->SetCompletionState(SNotificationItem::CS_Fail);
-            NotificationItem->ExpireAndFadeout();
-        }
-
-        ResultData.Init(0, TargetSize * TargetSize);
-        return ResultData;
+        return Result;
     }
     }
-
-    SourceTex->Source.UnlockMip(0);
 
     // Resize if necessary
     TArray<FColor> ResizedColors;
@@ -676,19 +717,15 @@ static TArray<uint8> GetResizedTextureData(UTexture2D* SourceTex, int32 TargetSi
     }
 
     // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
-    ResultData.SetNumUninitialized(TargetSize * TargetSize);
-    uint8* DestData = ResultData.GetData();
+    Result.ProcessedData.SetNumUninitialized(TargetSize * TargetSize);
+    uint8* DestData = Result.ProcessedData.GetData();
     for (int32 i = 0; i < TargetSize * TargetSize; ++i)
     {
         const FColor& C = ResizedColors[i];
         DestData[i] = C.R;
     }
-#else
-    UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-    ResultData.Init(0, TargetSize * TargetSize);
-#endif
 
-    return ResultData;
+    return Result;
 }
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
@@ -728,66 +765,59 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
     UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
-    // Get Resized Data for Inputs
+    // ---------------------------------------------------------
+    // STEP 1: Extract Raw Data from Inputs (Game Thread)
+    // ---------------------------------------------------------
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressLoadingChannels"),
-        TEXT("Processing Red, Green, Blue channels..."),
-        TEXT("Red, Green, Blue チャンネルを処理中...")
+        TEXT("ProgressExtracting"),
+        TEXT("Extracting source data..."),
+        TEXT("ソースデータを抽出中...")
     ));
 
-    if (SlowTask.ShouldCancel())
-    {
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
+    TArray<FTextureRawData> RawInputs;
+    RawInputs.SetNum(4); // R, G, B, A
 
-    TArray<uint8> DataR;
-    if (InputTextureR.IsValid())
-    {
-        DataR = GetResizedTextureData(InputTextureR.Get(), Resolution);
-    }
+    RawInputs[0] = ExtractTextureSourceData(InputTextureR.Get());
+    RawInputs[1] = ExtractTextureSourceData(InputTextureG.Get());
+    RawInputs[2] = ExtractTextureSourceData(InputTextureB.Get());
+    RawInputs[3] = ExtractTextureSourceData(InputTextureA.Get());
 
-    TArray<uint8> DataG;
-    if (InputTextureG.IsValid())
-    {
-        DataG = GetResizedTextureData(InputTextureG.Get(), Resolution);
-    }
+    if (SlowTask.ShouldCancel()) return;
 
-    TArray<uint8> DataB;
-    if (InputTextureB.IsValid())
-    {
-        DataB = GetResizedTextureData(InputTextureB.Get(), Resolution);
-    }
-
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressLoadingAlpha"),
-        TEXT("Processing Alpha channel..."),
-        TEXT("Alpha チャンネルを処理中...")
+    // ---------------------------------------------------------
+    // STEP 2: Process Data in Parallel (Background Threads)
+    // ---------------------------------------------------------
+    SlowTask.EnterProgressFrame(2.0f, GetLocalizedMessage(
+        TEXT("ProgressProcessingParallel"),
+        TEXT("Resizing and processing channels..."),
+        TEXT("チャンネルのリサイズと処理中...")
     ));
 
-    if (SlowTask.ShouldCancel())
-    {
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
+    TArray<FTextureProcessResult> ProcessedResults;
+    ProcessedResults.SetNum(4);
 
-    TArray<uint8> DataA;
-    if (InputTextureA.IsValid())
+    ParallelFor(4, [&](int32 Index)
     {
-        DataA = GetResizedTextureData(InputTextureA.Get(), Resolution);
+        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Resolution);
+    });
+
+    if (SlowTask.ShouldCancel()) return;
+
+    // Check for errors
+    for (const auto& Res : ProcessedResults)
+    {
+        if (!Res.bSuccess && !Res.ErrorMessage.IsEmpty())
+        {
+            ShowNotification(Res.ErrorMessage, false);
+            // We continue, treating it as black/default, but user is warned.
+            // Alternatively, return here to abort.
+        }
     }
 
 #if WITH_EDITORONLY_DATA
+    // ---------------------------------------------------------
+    // STEP 3: Write to Output Texture (Game Thread)
+    // ---------------------------------------------------------
     // Initialize Source
     NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
 
@@ -797,37 +827,23 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         TEXT("ピクセルデータを書き込み中...")
     ));
 
-    if (SlowTask.ShouldCancel())
-    {
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
+    if (SlowTask.ShouldCancel()) return;
 
     // Lock and Write Pixels directly to Source
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
-        const uint8* PtrR = DataR.Num() > 0 ? DataR.GetData() : nullptr;
-        const uint8* PtrG = DataG.Num() > 0 ? DataG.GetData() : nullptr;
-        const uint8* PtrB = DataB.Num() > 0 ? DataB.GetData() : nullptr;
-        const uint8* PtrA = DataA.Num() > 0 ? DataA.GetData() : nullptr;
+        const uint8* PtrR = ProcessedResults[0].ProcessedData.Num() > 0 ? ProcessedResults[0].ProcessedData.GetData() : nullptr;
+        const uint8* PtrG = ProcessedResults[1].ProcessedData.Num() > 0 ? ProcessedResults[1].ProcessedData.GetData() : nullptr;
+        const uint8* PtrB = ProcessedResults[2].ProcessedData.Num() > 0 ? ProcessedResults[2].ProcessedData.GetData() : nullptr;
+        const uint8* PtrA = ProcessedResults[3].ProcessedData.Num() > 0 ? ProcessedResults[3].ProcessedData.GetData() : nullptr;
 
         for (int32 i = 0; i < Resolution * Resolution; ++i)
         {
-            // Each Data array is now Grayscale (1 byte per pixel).
-            // New.R = InputR_Data[i]
-            // New.G = InputG_Data[i]
-            // New.B = InputB_Data[i]
-
             uint8 R_Val = PtrR ? PtrR[i] : 0;
             uint8 G_Val = PtrG ? PtrG[i] : 0;
             uint8 B_Val = PtrB ? PtrB[i] : 0;
-            uint8 A_Val = PtrA ? PtrA[i] : 255; // Use Red channel of Alpha input, or 255
+            uint8 A_Val = PtrA ? PtrA[i] : 255; // Default Alpha to 255 (White)
 
             // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
             MipData[i * 4 + 0] = B_Val; // B
