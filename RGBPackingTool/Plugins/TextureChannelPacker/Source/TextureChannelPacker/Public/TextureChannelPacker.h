@@ -9,6 +9,14 @@ class SDockTab;
 class FSpawnTabArgs;
 class UTexture2D;
 
+/**
+ * @class FTextureChannelPackerModule
+ * @brief The main module class for the Texture Channel Packer plugin.
+ *
+ * This class handles the initialization and shutdown of the module, manages the UI dock tab,
+ * and coordinates the texture packing process. It serves as the central hub for user interaction
+ * (selecting textures, settings) and executing the packing logic.
+ */
 class FTextureChannelPackerModule : public IModuleInterface
 {
 public:
