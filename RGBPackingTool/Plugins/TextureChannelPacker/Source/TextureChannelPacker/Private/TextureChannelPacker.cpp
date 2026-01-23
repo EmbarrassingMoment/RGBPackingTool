@@ -36,7 +36,17 @@ DEFINE_LOG_CATEGORY_STATIC(LogTexturePacker, Log, All);
 
 static const FName TextureChannelPackerTabName("TextureChannelPacker");
 
-// Helper function to localize notifications
+/**
+ * @brief Retrieves a localized message based on the current culture.
+ *
+ * This helper function returns either the Japanese text (if the current culture is Japanese)
+ * or the English text (for all other cultures).
+ *
+ * @param Key A unique identifier for the localization key (currently unused but good for future expansion).
+ * @param EnglishText The text to display in English.
+ * @param JapaneseText The text to display in Japanese.
+ * @return FText The localized text.
+ */
 static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText, const FString& JapaneseText)
 {
     FString CultureName = FInternationalization::Get().GetCurrentCulture()->GetTwoLetterISOLanguageName();
@@ -550,7 +560,16 @@ struct FTextureProcessResult
     bool bSuccess = true;
 };
 
-// Helper to extract raw data on Game Thread
+/**
+ * @brief Extracts raw pixel data from a UTexture2D on the Game Thread.
+ *
+ * This function accesses the platform-specific source data of a texture asset,
+ * locks the mipmap to read raw bytes, and copies them into a thread-safe struct.
+ * This MUST be called on the Game Thread.
+ *
+ * @param SourceTex The source UTexture2D asset.
+ * @return FTextureRawData A struct containing the copied raw data and metadata.
+ */
 static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
 {
     FTextureRawData Result;
@@ -598,7 +617,17 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     return Result;
 }
 
-// Helper function to process texture data (Thread Safe)
+/**
+ * @brief Processes raw texture data to produce a single channel of output.
+ *
+ * This function handles resizing (using FImageUtils) and format conversion (e.g., extracting
+ * the Red channel from BGRA, or converting 16-bit grayscale to 8-bit).
+ * This function is designed to be thread-safe and run in parallel tasks.
+ *
+ * @param Input The raw source data extracted from the input texture.
+ * @param TargetSize The target resolution for the output (width and height).
+ * @return FTextureProcessResult The processed single-channel 8-bit data.
+ */
 static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Input, int32 TargetSize)
 {
     FTextureProcessResult Result;
