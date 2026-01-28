@@ -641,7 +641,7 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
  * @param TargetSize The target resolution for the output (width and height).
  * @return FTextureProcessResult The processed single-channel 8-bit data.
  */
-static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Input, int32 TargetSize)
+static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetSize)
 {
     FTextureProcessResult Result;
     // Default to zero-filled array
@@ -662,21 +662,21 @@ static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Inp
     {
         if (Input.Format == TSF_G8)
         {
-            // Direct copy for Grayscale input
-            Result.ProcessedData = Input.RawData;
+            // Direct move for Grayscale input (zero-copy optimization)
+            Result.ProcessedData = MoveTemp(Input.RawData);
             return Result;
         }
         else if (Input.Format == TSF_BGRA8)
         {
-            // Direct Red-channel extraction for BGRA input
+            // Parallel Red-channel extraction for BGRA input
             Result.ProcessedData.SetNumUninitialized(NumPixels);
             uint8* DestData = Result.ProcessedData.GetData();
             const uint8* SrcPtr = SrcData;
-            for (int32 i = 0; i < NumPixels; ++i)
+
+            ParallelFor(NumPixels, [DestData, SrcPtr](int32 i)
             {
-                DestData[i] = SrcPtr[2]; // R channel in BGRA
-                SrcPtr += 4;
-            }
+                DestData[i] = SrcPtr[i * 4 + 2]; // R channel in BGRA
+            });
             return Result;
         }
     }
