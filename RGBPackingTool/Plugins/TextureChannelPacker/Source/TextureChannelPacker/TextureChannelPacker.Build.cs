@@ -29,19 +29,16 @@ public class TextureChannelPacker : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
-                "CoreUObject",
-                "Engine",
-                "Slate",
-                "SlateCore",
-                "InputCore",
-                "UnrealEd",
-                "ToolMenus",
-                "PropertyEditor",
-                "ImageCore",
-                "RenderCore",
-                "AssetRegistry",
-                "ContentBrowser"
-                // ... add private dependencies that you statically link with here ...
+                "CoreUObject",    // UObject システム
+                "Engine",         // テクスチャとアセット管理
+                "Slate",          // UI フレームワーク
+                "SlateCore",      // UI コアコンポーネント
+                "UnrealEd",       // エディター機能
+                "ToolMenus",      // メニュー拡張
+                "PropertyEditor", // プロパティピッカー
+                "ImageCore",      // FImageUtils（リサイズ処理）
+                "AssetRegistry",  // アセット登録
+                "ContentBrowser"  // パスピッカー
             }
         );
 
