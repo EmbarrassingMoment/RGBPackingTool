@@ -545,6 +545,12 @@ struct FTextureRawData
     ETextureSourceFormat Format = TSF_Invalid;
     FString TextureName;
     bool bIsValid = false;
+
+    /**
+     * User-facing error message if extraction failed.
+     * Empty if no error occurred.
+     */
+    FText ErrorMessage;
 };
 
 /**
@@ -621,10 +627,20 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     else
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *Result.TextureName);
+        Result.ErrorMessage = GetLocalizedMessage(
+            TEXT("ErrorLockFailed"),
+            TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
+            TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")
+        );
     }
     SourceTex->Source.UnlockMip(0);
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+    Result.ErrorMessage = GetLocalizedMessage(
+        TEXT("ErrorNoEditorData"),
+        TEXT("This plugin requires Editor-only data to function. Ensure the project is built with editor support."),
+        TEXT("このプラグインはエディター専用データが必要です。プロジェクトがエディターサポート付きでビルドされていることを確認してください。")
+    );
 #endif
 
     return Result;
@@ -925,6 +941,16 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
             ShowNotification(Res.ErrorMessage, false);
             // We continue, treating it as black/default, but user is warned.
             // Alternatively, return here to abort.
+        }
+    }
+
+    // Check for errors from texture extraction
+    for (int32 i = 0; i < RawInputs.Num(); ++i)
+    {
+        if (!RawInputs[i].bIsValid && !RawInputs[i].ErrorMessage.IsEmpty())
+        {
+            ShowNotification(RawInputs[i].ErrorMessage, false);
+            // Continue processing - the channel will be filled with default values
         }
     }
 
