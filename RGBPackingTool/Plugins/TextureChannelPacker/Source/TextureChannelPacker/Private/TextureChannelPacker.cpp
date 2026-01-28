@@ -590,21 +590,33 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     if (SrcData)
     {
         int32 BytesPerPixel = SourceTex->Source.GetBytesPerPixel();
+
+        // Validation 1: Check if BytesPerPixel is valid
+        if (BytesPerPixel == 0)
+        {
+            UE_LOG(LogTexturePacker, Error,
+                TEXT("GetBytesPerPixel() returned 0 for texture: %s (Format: %d). This format may not be supported."),
+                *Result.TextureName, (int32)Result.Format);
+            SourceTex->Source.UnlockMip(0);
+            return Result;  // Return invalid result
+        }
+
         int32 TotalBytes = Result.Width * Result.Height * BytesPerPixel;
 
-        // Handle compressed formats or unexpected byte counts if needed,
-        // but typically LockMip returns raw bytes based on format.
-        // For TSF_BGRA8 -> 4 bytes. TSF_G8 -> 1 byte.
-        // We trust the format implies the size.
-        // However, GetBytesPerPixel might return 0 for some formats?
-        // Let's rely on calculating from format if needed, but GetBytesPerPixel is safer if valid.
-
-        if (TotalBytes > 0)
+        // Validation 2: Check if TotalBytes is valid
+        if (TotalBytes <= 0)
         {
-            Result.RawData.SetNumUninitialized(TotalBytes);
-            FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
-            Result.bIsValid = true;
+            UE_LOG(LogTexturePacker, Error,
+                TEXT("Invalid total bytes (%d) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
+                TotalBytes, *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
+            SourceTex->Source.UnlockMip(0);
+            return Result;  // Return invalid result
         }
+
+        // Data is valid, proceed with copy
+        Result.RawData.SetNumUninitialized(TotalBytes);
+        FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
+        Result.bIsValid = true;
     }
     else
     {
