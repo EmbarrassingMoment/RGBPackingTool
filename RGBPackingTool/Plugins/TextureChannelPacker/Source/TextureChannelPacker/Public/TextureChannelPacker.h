@@ -43,17 +43,6 @@ private:
      */
     TSharedRef<SDockTab> OnSpawnPluginTab(const FSpawnTabArgs& SpawnTabArgs);
 
-    /** Input textures for each channel */
-    TWeakObjectPtr<UTexture2D> InputTextureR;
-    TWeakObjectPtr<UTexture2D> InputTextureG;
-    TWeakObjectPtr<UTexture2D> InputTextureB;
-    TWeakObjectPtr<UTexture2D> InputTextureA;
-
-    /** Output Settings */
-    FString OutputPackagePath = "/Game/";
-    FString OutputFileName = "T_Packed_Texture";
-    int32 TargetResolution = 2048;
-
     /**
      * @brief Handles the 'Generate Texture' button click event.
      *
@@ -91,9 +80,27 @@ private:
      */
     void ShowNotification(const FText& Message, bool bSuccess);
 
-    /** Compression Options */
-    TArray<TSharedPtr<FString>> CompressionOptions;
-    TSharedPtr<FString> CurrentCompressionOption;
+    /**
+     * @brief Validates that input textures are unique and compatible.
+     *
+     * Checks for duplicate texture assignments across channels and ensures
+     * that all provided textures are valid and accessible.
+     *
+     * @param OutErrorMessage If validation fails, contains a localized error message for the user.
+     * @return True if all inputs are valid, false otherwise.
+     */
+    bool ValidateInputTextures(FText& OutErrorMessage) const;
+
+    /**
+     * @brief Checks if a given value is a power of two.
+     *
+     * Power-of-two resolutions are often more efficient for GPU processing,
+     * though this plugin supports any resolution from 1 to 8192.
+     *
+     * @param Value The resolution value to check.
+     * @return True if the value is a power of two (1, 2, 4, 8, 16, ..., 8192), false otherwise.
+     */
+    bool IsPowerOfTwo(int32 Value) const;
 
     /**
      * @brief Converts the currently selected compression option string to the corresponding Unreal Engine enum.
@@ -114,6 +121,47 @@ private:
      */
     TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText = FText::GetEmpty());
 
-    /** Flag to track if the user has manually edited the output filename */
+    // ========== Input Textures ==========
+
+    /** Texture to be packed into the Red channel of the output (e.g., Ambient Occlusion) */
+    TWeakObjectPtr<UTexture2D> InputTextureR;
+
+    /** Texture to be packed into the Green channel of the output (e.g., Roughness) */
+    TWeakObjectPtr<UTexture2D> InputTextureG;
+
+    /** Texture to be packed into the Blue channel of the output (e.g., Metallic) */
+    TWeakObjectPtr<UTexture2D> InputTextureB;
+
+    /**
+     * Texture to be packed into the Alpha channel of the output (optional).
+     * If not provided, the Alpha channel defaults to white (255 / fully opaque).
+     */
+    TWeakObjectPtr<UTexture2D> InputTextureA;
+
+    // ========== Output Settings ==========
+
+    /** The package path where the generated texture will be saved (e.g., "/Game/Textures/") */
+    FString OutputPackagePath = "/Game/";
+
+    /** The filename for the generated texture asset (without extension) */
+    FString OutputFileName = "T_Packed_Texture";
+
+    /** Target resolution for the output texture (width and height, in pixels). Valid range: 1-8192. */
+    int32 TargetResolution = 2048;
+
+    // ========== Compression Settings ==========
+
+    /** Available compression options for the dropdown menu ("Masks", "Grayscale", "Default") */
+    TArray<TSharedPtr<FString>> CompressionOptions;
+
+    /** The currently selected compression option from the dropdown */
+    TSharedPtr<FString> CurrentCompressionOption;
+
+    // ========== Internal State ==========
+
+    /**
+     * Flag to track whether the user has manually edited the output filename.
+     * When true, auto-generation of filenames is disabled to preserve user input.
+     */
     bool bFileNameManuallyEdited = false;
 };
