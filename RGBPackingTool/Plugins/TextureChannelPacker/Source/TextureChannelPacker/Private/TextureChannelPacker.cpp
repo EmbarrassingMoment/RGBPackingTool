@@ -1,4 +1,5 @@
 #include "TextureChannelPacker.h"
+#include "UObject/StrongObjectPtr.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Text/STextBlock.h"
@@ -782,9 +783,35 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     ));
     SlowTask.MakeDialog(true); // true = cancellable
 
-    // Create the package
-    UPackage* Package = CreatePackage(*PackageName);
+    // Create the package using TStrongObjectPtr for RAII
+    TStrongObjectPtr<UPackage> PackagePtr(CreatePackage(*PackageName));
+    UPackage* Package = PackagePtr.Get();
+
+    if (!Package)
+    {
+        ShowNotification(
+            GetLocalizedMessage(
+                TEXT("ErrorPackageCreation"),
+                TEXT("Failed to create package."),
+                TEXT("パッケージの作成に失敗しました。")
+            ),
+            false
+        );
+        return;
+    }
+
     Package->FullyLoad();
+
+    // Helper lambda for cleanup on early exit (Cancel/Error)
+    auto CleanupOnEarlyExit = [&Package, &PackageName]()
+    {
+        if (Package && !Package->IsDirty())
+        {
+            UE_LOG(LogTexturePacker, Warning, TEXT("Package creation cancelled. Cleaning up: %s"), *PackageName);
+            Package->ClearFlags(RF_Standalone | RF_MarkAsRootSet);
+            Package->MarkAsGarbage();
+        }
+    };
 
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
         TEXT("ProgressPackageCreated"),
@@ -794,6 +821,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     if (SlowTask.ShouldCancel())
     {
+        CleanupOnEarlyExit();
         FText CancelMsg = GetLocalizedMessage(
             TEXT("OperationCancelled"),
             TEXT("Texture generation was cancelled by user."),
@@ -816,6 +844,18 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         TEXT("ソースデータを抽出中...")
     ));
 
+    if (SlowTask.ShouldCancel())
+    {
+        CleanupOnEarlyExit();
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
+
     TArray<FTextureRawData> RawInputs;
     RawInputs.SetNum(4); // R, G, B, A
 
@@ -823,8 +863,6 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     RawInputs[1] = ExtractTextureSourceData(InputTextureG.Get());
     RawInputs[2] = ExtractTextureSourceData(InputTextureB.Get());
     RawInputs[3] = ExtractTextureSourceData(InputTextureA.Get());
-
-    if (SlowTask.ShouldCancel()) return;
 
     // ---------------------------------------------------------
     // STEP 2: Process Data in Parallel (Background Threads)
@@ -835,6 +873,18 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         TEXT("チャンネルのリサイズと処理中...")
     ));
 
+    if (SlowTask.ShouldCancel())
+    {
+        CleanupOnEarlyExit();
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
+
     TArray<FTextureProcessResult> ProcessedResults;
     ProcessedResults.SetNum(4);
 
@@ -843,7 +893,17 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Resolution);
     });
 
-    if (SlowTask.ShouldCancel()) return;
+    if (SlowTask.ShouldCancel())
+    {
+        CleanupOnEarlyExit();
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
 
     // Check for errors
     for (const auto& Res : ProcessedResults)
@@ -869,7 +929,17 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         TEXT("ピクセルデータを書き込み中...")
     ));
 
-    if (SlowTask.ShouldCancel()) return;
+    if (SlowTask.ShouldCancel())
+    {
+        CleanupOnEarlyExit();
+        FText CancelMsg = GetLocalizedMessage(
+            TEXT("OperationCancelled"),
+            TEXT("Texture generation was cancelled by user."),
+            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
+        );
+        ShowNotification(CancelMsg, false);
+        return;
+    }
 
     // Lock and Write Pixels directly to Source
     uint8* MipData = NewTexture->Source.LockMip(0);
@@ -905,6 +975,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     if (SlowTask.ShouldCancel())
     {
+        CleanupOnEarlyExit();
         FText CancelMsg = GetLocalizedMessage(
             TEXT("OperationCancelled"),
             TEXT("Texture generation was cancelled by user."),

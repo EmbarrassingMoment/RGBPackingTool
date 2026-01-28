@@ -7,6 +7,11 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [1.2.0] - 2026-01-25
+
+### 修正 (Fixed)
+- **メモリリーク (Memory Leak)**: テクスチャ生成がキャンセルまたは失敗した際に、`UPackage` オブジェクトが適切にガベージコレクションされない問題を修正しました。`TStrongObjectPtr` を使用したRAIIパターンと適切なクリーンアップ処理を実装しました。
+
 ## [1.1.0] - 2026-01-16
 
 ### 追加 (Added)
