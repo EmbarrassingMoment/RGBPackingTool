@@ -125,26 +125,7 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FT
         .AutoHeight()
         .Padding(0.0f, 0.0f, 0.0f, 4.0f)
         [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            [
-                LabelWidget.ToSharedRef()
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([InvertFlag]() { return *InvertFlag ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                .OnCheckStateChanged_Lambda([InvertFlag](ECheckBoxState NewState) { *InvertFlag = (NewState == ECheckBoxState::Checked); })
-                [
-                    SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("InvertLabel"), TEXT("Invert"), TEXT("反転")))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-            ]
+            LabelWidget.ToSharedRef()
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -163,6 +144,19 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FT
             .AllowClear(true)
             .DisplayThumbnail(true)
             .ThumbnailPool(UThumbnailManager::Get().GetSharedThumbnailPool())
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.0f, 4.0f, 0.0f, 0.0f)
+        [
+            SNew(SCheckBox)
+            .IsChecked_Lambda([InvertFlag]() { return *InvertFlag ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+            .OnCheckStateChanged_Lambda([InvertFlag](ECheckBoxState NewState) { *InvertFlag = (NewState == ECheckBoxState::Checked); })
+            [
+                SNew(STextBlock)
+                .Text(GetLocalizedMessage(TEXT("InvertLabel"), TEXT("Invert"), TEXT("反転")))
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+            ]
         ];
 }
 
