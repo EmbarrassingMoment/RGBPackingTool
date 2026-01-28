@@ -957,24 +957,49 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
-        const uint8* PtrR = ProcessedResults[0].ProcessedData.Num() > 0 ? ProcessedResults[0].ProcessedData.GetData() : nullptr;
-        const uint8* PtrG = ProcessedResults[1].ProcessedData.Num() > 0 ? ProcessedResults[1].ProcessedData.GetData() : nullptr;
-        const uint8* PtrB = ProcessedResults[2].ProcessedData.Num() > 0 ? ProcessedResults[2].ProcessedData.GetData() : nullptr;
-        const uint8* PtrA = ProcessedResults[3].ProcessedData.Num() > 0 ? ProcessedResults[3].ProcessedData.GetData() : nullptr;
+        const uint8* TempR = ProcessedResults[0].ProcessedData.Num() > 0 ? ProcessedResults[0].ProcessedData.GetData() : nullptr;
+        const uint8* TempG = ProcessedResults[1].ProcessedData.Num() > 0 ? ProcessedResults[1].ProcessedData.GetData() : nullptr;
+        const uint8* TempB = ProcessedResults[2].ProcessedData.Num() > 0 ? ProcessedResults[2].ProcessedData.GetData() : nullptr;
+        const uint8* TempA = ProcessedResults[3].ProcessedData.Num() > 0 ? ProcessedResults[3].ProcessedData.GetData() : nullptr;
 
-        for (int32 i = 0; i < Resolution * Resolution; ++i)
+        // Pre-fill defaults for null channels to eliminate branches in the main loop
+        TArray<uint8> DefaultR, DefaultG, DefaultB, DefaultA;
+
+        const uint8* PtrR = TempR;
+        const uint8* PtrG = TempG;
+        const uint8* PtrB = TempB;
+        const uint8* PtrA = TempA;
+
+        if (!PtrR)
         {
-            uint8 R_Val = PtrR ? PtrR[i] : 0;
-            uint8 G_Val = PtrG ? PtrG[i] : 0;
-            uint8 B_Val = PtrB ? PtrB[i] : 0;
-            uint8 A_Val = PtrA ? PtrA[i] : 255; // Default Alpha to 255 (White)
-
-            // Output Texture is PF_B8G8R8A8 (BGRA memory layout)
-            MipData[i * 4 + 0] = B_Val; // B
-            MipData[i * 4 + 1] = G_Val; // G
-            MipData[i * 4 + 2] = R_Val; // R
-            MipData[i * 4 + 3] = A_Val; // A
+            DefaultR.Init(0, Resolution * Resolution);
+            PtrR = DefaultR.GetData();
         }
+        if (!PtrG)
+        {
+            DefaultG.Init(0, Resolution * Resolution);
+            PtrG = DefaultG.GetData();
+        }
+        if (!PtrB)
+        {
+            DefaultB.Init(0, Resolution * Resolution);
+            PtrB = DefaultB.GetData();
+        }
+        if (!PtrA)
+        {
+            DefaultA.Init(255, Resolution * Resolution);
+            PtrA = DefaultA.GetData();
+        }
+
+        // Parallel, branch-free pixel writing
+        ParallelFor(Resolution * Resolution, [MipData, PtrR, PtrG, PtrB, PtrA](int32 i)
+        {
+            int32 Offset = i * 4;
+            MipData[Offset + 0] = PtrB[i]; // B
+            MipData[Offset + 1] = PtrG[i]; // G
+            MipData[Offset + 2] = PtrR[i]; // R
+            MipData[Offset + 3] = PtrA[i]; // A
+        });
     }
     NewTexture->Source.UnlockMip(0);
 #endif
