@@ -4,6 +4,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -105,7 +106,7 @@ void FTextureChannelPackerModule::ShutdownModule()
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 }
 
-TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText)
+TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool* InvertFlag, const FText& TooltipText)
 {
     // Capture the address of the member variable to update it inside the lambda
     TWeakObjectPtr<UTexture2D>* TexturePtr = &TargetTexturePtr;
@@ -124,7 +125,26 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FT
         .AutoHeight()
         .Padding(0.0f, 0.0f, 0.0f, 4.0f)
         [
-            LabelWidget.ToSharedRef()
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                LabelWidget.ToSharedRef()
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([InvertFlag]() { return *InvertFlag ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                .OnCheckStateChanged_Lambda([InvertFlag](ECheckBoxState NewState) { *InvertFlag = (NewState == ECheckBoxState::Checked); })
+                [
+                    SNew(STextBlock)
+                    .Text(GetLocalizedMessage(TEXT("InvertLabel"), TEXT("Invert"), TEXT("反転")))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                ]
+            ]
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -186,7 +206,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")),
-                    InputTextureR
+                    InputTextureR,
+                    &bInvertR
                 )
             ]
 
@@ -197,7 +218,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")),
-                    InputTextureG
+                    InputTextureG,
+                    &bInvertG
                 )
             ]
 
@@ -208,7 +230,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")),
-                    InputTextureB
+                    InputTextureB,
+                    &bInvertB
                 )
             ]
 
@@ -220,6 +243,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")),
                     InputTextureA,
+                    &bInvertA,
                     GetLocalizedMessage(
                         TEXT("AlphaChannelTooltip"),
                         TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
@@ -626,9 +650,10 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
  *
  * @param Input The raw source data extracted from the input texture.
  * @param TargetSize The target resolution for the output (width and height).
+ * @param bInvert Whether to invert the pixel values (255 - Value).
  * @return FTextureProcessResult The processed single-channel 8-bit data.
  */
-static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Input, int32 TargetSize)
+static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Input, int32 TargetSize, bool bInvert)
 {
     FTextureProcessResult Result;
     // Default to zero-filled array
@@ -651,6 +676,14 @@ static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Inp
         {
             // Direct copy for Grayscale input
             Result.ProcessedData = Input.RawData;
+            if (bInvert)
+            {
+                uint8* DestData = Result.ProcessedData.GetData();
+                for (int32 i = 0; i < NumPixels; ++i)
+                {
+                    DestData[i] = 255 - DestData[i];
+                }
+            }
             return Result;
         }
         else if (Input.Format == TSF_BGRA8)
@@ -661,7 +694,8 @@ static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Inp
             const uint8* SrcPtr = SrcData;
             for (int32 i = 0; i < NumPixels; ++i)
             {
-                DestData[i] = SrcPtr[2]; // R channel in BGRA
+                uint8 Val = SrcPtr[2]; // R channel in BGRA
+                DestData[i] = bInvert ? (255 - Val) : Val;
                 SrcPtr += 4;
             }
             return Result;
@@ -764,7 +798,7 @@ static FTextureProcessResult ProcessTextureSourceData(const FTextureRawData& Inp
     for (int32 i = 0; i < TargetSize * TargetSize; ++i)
     {
         const FColor& C = ResizedColors[i];
-        DestData[i] = C.R;
+        DestData[i] = bInvert ? (255 - C.R) : C.R;
     }
 
     return Result;
@@ -838,9 +872,11 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     TArray<FTextureProcessResult> ProcessedResults;
     ProcessedResults.SetNum(4);
 
+    TArray<bool> InvertFlags = { bInvertR, bInvertG, bInvertB, bInvertA };
+
     ParallelFor(4, [&](int32 Index)
     {
-        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Resolution);
+        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Resolution, InvertFlags[Index]);
     });
 
     if (SlowTask.ShouldCancel()) return;

@@ -49,6 +49,12 @@ private:
     TWeakObjectPtr<UTexture2D> InputTextureB;
     TWeakObjectPtr<UTexture2D> InputTextureA;
 
+    /** Invert Flags */
+    bool bInvertR = false;
+    bool bInvertG = false;
+    bool bInvertB = false;
+    bool bInvertA = false;
+
     /** Output Settings */
     FString OutputPackagePath = "/Game/";
     FString OutputFileName = "T_Packed_Texture";
@@ -112,7 +118,7 @@ private:
      * @param TooltipText Optional tooltip text describing the channel's usage.
      * @return A shared reference to the created widget.
      */
-    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText = FText::GetEmpty());
+    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool* InvertFlag, const FText& TooltipText = FText::GetEmpty());
 
     /** Flag to track if the user has manually edited the output filename */
     bool bFileNameManuallyEdited = false;
