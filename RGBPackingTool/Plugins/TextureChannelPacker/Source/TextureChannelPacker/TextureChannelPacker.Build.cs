@@ -29,16 +29,16 @@ public class TextureChannelPacker : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
-                "CoreUObject",    // UObject システム
-                "Engine",         // テクスチャとアセット管理
-                "Slate",          // UI フレームワーク
-                "SlateCore",      // UI コアコンポーネント
-                "UnrealEd",       // エディター機能
-                "ToolMenus",      // メニュー拡張
-                "PropertyEditor", // プロパティピッカー
-                "ImageCore",      // FImageUtils（リサイズ処理）
-                "AssetRegistry",  // アセット登録
-                "ContentBrowser"  // パスピッカー
+                "CoreUObject",
+                "Engine",
+                "Slate",
+                "SlateCore",
+                "UnrealEd",
+                "ToolMenus",
+                "PropertyEditor",
+                "ImageCore",
+                "AssetRegistry",
+                "ContentBrowser"
             }
         );
 
