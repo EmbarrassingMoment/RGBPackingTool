@@ -18,6 +18,7 @@
   - Reads the **Red channel** from each source texture.
   - If an input texture is missing, the corresponding channel is filled with Black (0).
   - **Optional Alpha Channel**: If an Alpha texture is assigned, its Red channel is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
+  - **Channel Inversion**: Each channel has an optional **Invert** checkbox. This allows you to invert specific channels (e.g., converting Roughness to Glossiness, or flipping a Normal map channel) during packing.
 - **Extended Format Support**:
   - Supports **16-bit Grayscale** and **32-bit Float (SDF)** source formats, ensuring high-precision data is processed correctly without "black texture" issues.
 - **Output Configuration**:
