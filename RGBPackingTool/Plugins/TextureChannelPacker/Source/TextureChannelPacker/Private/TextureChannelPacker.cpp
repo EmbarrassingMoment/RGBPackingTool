@@ -787,8 +787,8 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 {
     check(IsInGameThread());
 
-    // Initialize progress dialog with 5 steps total
-    FScopedSlowTask SlowTask(5.0f, GetLocalizedMessage(
+    // Initialize progress dialog with 6 steps total
+    FScopedSlowTask SlowTask(6.0f, GetLocalizedMessage(
         TEXT("ProgressProcessing"),
         TEXT("Processing Textures..."),
         TEXT("テクスチャを処理中...")
