@@ -33,12 +33,6 @@
   - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
   - Integrated into the Unreal Engine Editor via the **Tools** menu.
 
-## Built-in Effects
-
-| Effect Name | Description | Preview |
-| :--- | :--- | :--- |
-| **Wind** | A directional wipe with streak noise, simulating wind blowing the image away. | ![Wind](https://via.placeholder.com/320x180/000000/FFFFFF?text=Wind) |
-
 ## Requirements
 
 - **Unreal Engine 5.5+** (Developed and tested on 5.7)
