@@ -10,6 +10,34 @@ class FSpawnTabArgs;
 class UTexture2D;
 
 /**
+ * @struct FCompressionOption
+ * @brief Represents a texture compression configuration option.
+ *
+ * Encapsulates the internal identifier, the corresponding Unreal Engine compression setting,
+ * and localized display names for UI presentation.
+ */
+struct FCompressionOption
+{
+    /** Internal identifier for comparison and logic (locale-independent, e.g., "Masks"). */
+    FString InternalName;
+
+    /** The Unreal Engine texture compression setting (enum). */
+    TextureCompressionSettings CompressionSetting;
+
+    /** Display name in English. */
+    FString DisplayNameEn;
+
+    /** Display name in Japanese. */
+    FString DisplayNameJa;
+
+    /**
+     * @brief Returns the display name localized for the current editor language.
+     * @return FText The localized display name.
+     */
+    FText GetDisplayName() const;
+};
+
+/**
  * @class FTextureChannelPackerModule
  * @brief The main module class for the Texture Channel Packer plugin.
  *
@@ -152,10 +180,10 @@ private:
     // ========== Compression Settings ==========
 
     /** Available compression options for the dropdown menu ("Masks", "Grayscale", "Default") */
-    TArray<TSharedPtr<FString>> CompressionOptions;
+    TArray<TSharedPtr<FCompressionOption>> CompressionOptions;
 
     /** The currently selected compression option from the dropdown */
-    TSharedPtr<FString> CurrentCompressionOption;
+    TSharedPtr<FCompressionOption> CurrentCompressionOption;
 
     // ========== Internal State ==========
 
