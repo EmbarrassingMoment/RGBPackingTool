@@ -17,6 +17,7 @@
 #include "Engine/Texture2D.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
+#include "Misc/MessageDialog.h"
 #include "ImageUtils.h"
 #include "Math/UnrealMathUtility.h"
 #include "Math/Float16.h"
@@ -459,6 +460,32 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
         PackageName += TEXT("/");
     }
     PackageName += OutputFileName;
+
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+    FString ObjectPath = PackageName + TEXT(".") + OutputFileName;
+    FAssetData ExistingAsset = AssetRegistryModule.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
+
+    if (ExistingAsset.IsValid())
+    {
+        FText Msg = FText::Format(
+            GetLocalizedMessage(
+                TEXT("ConfirmOverwrite"),
+                TEXT("{0} already exists. Do you want to overwrite it?"),
+                TEXT("{0} は既に存在します。上書きしますか？")
+            ),
+            FText::FromString(OutputFileName)
+        );
+
+        EAppReturnType::Type Result = FMessageDialog::Open(
+            EAppMsgType::YesNo,
+            Msg
+        );
+
+        if (Result == EAppReturnType::No)
+        {
+            return FReply::Handled();
+        }
+    }
 
     CreateTexture(PackageName, TargetResolution);
 
