@@ -144,12 +144,25 @@ private:
      *
      * @param LabelText The display name for the channel (e.g., "Red Channel").
      * @param TargetTexturePtr A reference to the member variable that will hold the selected texture.
+     * @param bInvertFlag A reference to the boolean flag controlling channel inversion.
      * @param TooltipText Optional tooltip text describing the channel's usage.
      * @return A shared reference to the created widget.
      */
-    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText = FText::GetEmpty());
+    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText = FText::GetEmpty());
 
     // ========== Input Textures ==========
+
+    /** Flag to invert the Red channel input (255 - Value). */
+    bool bInvertR = false;
+
+    /** Flag to invert the Green channel input (255 - Value). */
+    bool bInvertG = false;
+
+    /** Flag to invert the Blue channel input (255 - Value). */
+    bool bInvertB = false;
+
+    /** Flag to invert the Alpha channel input (255 - Value). */
+    bool bInvertA = false;
 
     /** Texture to be packed into the Red channel of the output (e.g., Ambient Occlusion) */
     TWeakObjectPtr<UTexture2D> InputTextureR;
