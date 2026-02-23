@@ -19,9 +19,11 @@
   - Reads the **Red channel** from each source texture.
   - If an input texture is missing, the corresponding channel is filled with Black (0).
   - **Optional Alpha Channel**: If an Alpha texture is assigned, its Red channel is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
+- **Invert Toggle**: Each channel slot includes an Invert checkbox. When enabled, the channel values are flipped (`255 - Value`), useful for conversions like Roughness to Smoothness without a separate texture.
 - **Extended Format Support**:
   - Supports **16-bit Grayscale** and **32-bit Float (SDF)** source formats, ensuring high-precision data is processed correctly without "black texture" issues.
 - **Output Configuration**:
+  - **Non-Square Output**: Width and Height can be specified independently, enabling non-square packed textures for UI atlases and other use cases.
   - **Compression Settings**: Select from `Masks (Recommended)`, `Grayscale`, or `Default` via a dropdown menu.
   - Customizes Output Path, File Name, and Resolution.
   - Generates `UTexture2D` assets with `sRGB = false` (linear color).
@@ -30,6 +32,7 @@
 - **User Interface**:
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Cancellable Progress**: A progress dialog with a cancel button appears during generation, allowing you to abort long operations.
+  - **Overwrite Confirmation**: A confirmation dialog appears when the output asset already exists, preventing accidental data loss.
   - **Path Picker**: Easily select the output directory from the Content Browser using the folder icon button.
   - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
   - Integrated into the Unreal Engine Editor via the **Tools** menu.
@@ -101,10 +104,12 @@ If you want the latest development version or need to modify the source code:
    - **Blue Channel Input**: Select a texture for the Blue channel (e.g., Metallic).
    - **Alpha Channel Input** (Optional): Select a texture for the Alpha channel. If empty, it defaults to White (255).
 
+   Each channel slot also has an **Invert** checkbox. Enable it to flip the channel values (`255 - Value`), which is useful for converting between Roughness and Smoothness without needing a separate texture.
+
    *Note: You can **Drag & Drop** textures directly from the Content Browser into the slots. You can also leave any input empty; R/G/B channels will be filled with black if missing.*
 
 3. **Configure Output**:
-   - **Resolution**: Set the target resolution for the output texture (e.g., 2048).
+   - **Resolution (Width × Height)**: Set the target width and height for the output texture independently (e.g., 2048 × 2048). Non-square resolutions are supported.
    - **Compression Settings**: Choose the compression type (default is `Masks`).
    - **Output Path**: Specify the game folder path. You can type it manually or click the **Folder Icon** to select a directory from the Content Browser.
    - **File Name**: Enter the desired name for the new texture asset.
@@ -143,6 +148,12 @@ If you want the latest development version or need to modify the source code:
 
 **Q: What input formats are supported?**
 **A:** It supports standard formats (PNG, TGA, PSD) as well as **16-bit Grayscale** and **32-bit Float (e.g., EXR)** formats, ensuring high precision for Heightmaps and SDFs.
+
+**Q: What does the Invert checkbox do?**
+**A:** It flips the channel values (`255 - Value`). This is useful for converting between Roughness and Smoothness, or inverting any mask without needing to edit the source texture.
+
+**Q: Can I create non-square textures?**
+**A:** Yes. Since v1.3.0, Width and Height can be specified independently, allowing you to create textures like 2048×1024.
 
 ## License
 

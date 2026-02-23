@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 2,
-	"VersionName": "1.2.0",
+	"Version": 3,
+	"VersionName": "1.3.0",
 	"FriendlyName": "Texture Channel Packer",
 	"Description": "A simple tool to pack RGB+A channels with auto-resizing and smart naming features.",
 	"Category": "Editor",

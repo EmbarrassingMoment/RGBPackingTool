@@ -110,28 +110,6 @@ private:
     void ShowNotification(const FText& Message, bool bSuccess);
 
     /**
-     * @brief Validates that input textures are unique and compatible.
-     *
-     * Checks for duplicate texture assignments across channels and ensures
-     * that all provided textures are valid and accessible.
-     *
-     * @param OutErrorMessage If validation fails, contains a localized error message for the user.
-     * @return True if all inputs are valid, false otherwise.
-     */
-    bool ValidateInputTextures(FText& OutErrorMessage) const;
-
-    /**
-     * @brief Checks if a given value is a power of two.
-     *
-     * Power-of-two resolutions are often more efficient for GPU processing,
-     * though this plugin supports any resolution from 1 to 8192.
-     *
-     * @param Value The resolution value to check.
-     * @return True if the value is a power of two (1, 2, 4, 8, 16, ..., 8192), false otherwise.
-     */
-    bool IsPowerOfTwo(int32 Value) const;
-
-    /**
      * @brief Converts the currently selected compression option string to the corresponding Unreal Engine enum.
      *
      * @return The TextureCompressionSettings enum value (e.g., TC_Masks, TC_Grayscale, TC_Default).
