@@ -93,7 +93,7 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
 2.  **Processing (Parallel Threads)**
     -   `ParallelFor` is used to invoke `ProcessTextureSourceData` for all 4 channels concurrently.
     -   **Format Conversion**: Supports `TSF_BGRA8` (extracts Red), `TSF_G8` (Grayscale), `TSF_G16` (16-bit Grayscale), and Float formats (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`). All are converted to 8-bit `uint8`.
-    -   **Resizing**: If the input resolution differs from the `TargetResolution`, `FImageUtils::ImageResize` is used.
+    -   **Resizing**: If the input resolution differs from the `TargetWidth` and `TargetHeight`, `FImageUtils::ImageResize` is used.
 
 3.  **Reconstruction (Game Thread)**
     -   A new `UTexture2D` is created (or updated) in the package.

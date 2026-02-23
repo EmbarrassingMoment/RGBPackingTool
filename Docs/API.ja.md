@@ -93,7 +93,7 @@ struct FTextureProcessResult
 2.  **処理 (並列スレッド)**
     -   `ParallelFor` を使用して、全4チャンネルに対して `ProcessTextureSourceData` を並行して実行します。
     -   **フォーマット変換**: `TSF_BGRA8` (赤チャンネル抽出), `TSF_G8` (グレースケール), `TSF_G16` (16bit グレースケール), および Float 形式 (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`) をサポートします。すべて 8bit `uint8` に変換されます。
-    -   **リサイズ**: 入力解像度が `TargetResolution` と異なる場合、`FImageUtils::ImageResize` が使用されます。
+    -   **リサイズ**: 入力解像度が `TargetWidth` や `TargetHeight` と異なる場合、`FImageUtils::ImageResize` が使用されます。
 
 3.  **再構築 (ゲームスレッド)**
     -   新しい `UTexture2D` がパッケージ内に作成 (または更新) されます。

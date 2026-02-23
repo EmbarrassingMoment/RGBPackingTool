@@ -96,9 +96,10 @@ private:
      * and writing the final pixels to a new UTexture2D asset.
      *
      * @param PackageName The full package path and name for the new asset.
-     * @param Resolution The target resolution (width and height) for the square texture.
+     * @param Width The target width for the output texture.
+     * @param Height The target height for the output texture.
      */
-    void CreateTexture(const FString& PackageName, int32 Resolution);
+    void CreateTexture(const FString& PackageName, int32 Width, int32 Height);
 
     /**
      * @brief Displays a notification toast in the editor.
@@ -187,8 +188,11 @@ private:
     /** The filename for the generated texture asset (without extension) */
     FString OutputFileName = "T_Packed_Texture";
 
-    /** Target resolution for the output texture (width and height, in pixels). Valid range: 1-8192. */
-    int32 TargetResolution = 2048;
+    /** Target width for the output texture (in pixels). Valid range: 1-8192. */
+    int32 TargetWidth = 2048;
+
+    /** Target height for the output texture (in pixels). Valid range: 1-8192. */
+    int32 TargetHeight = 2048;
 
     // ========== Compression Settings ==========
 
