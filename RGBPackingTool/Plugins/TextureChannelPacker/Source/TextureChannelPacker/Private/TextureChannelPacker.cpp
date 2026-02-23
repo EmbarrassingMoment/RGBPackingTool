@@ -60,12 +60,35 @@ static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText,
     return FText::FromString(EnglishText);
 }
 
+FText FCompressionOption::GetDisplayName() const
+{
+    return GetLocalizedMessage(InternalName, DisplayNameEn, DisplayNameJa);
+}
+
 void FTextureChannelPackerModule::StartupModule()
 {
     // Initialize Compression Options
-    CompressionOptions.Add(MakeShared<FString>("Masks (Recommended)"));
-    CompressionOptions.Add(MakeShared<FString>("Grayscale"));
-    CompressionOptions.Add(MakeShared<FString>("Default"));
+    FCompressionOption MasksOption;
+    MasksOption.InternalName = "Masks";
+    MasksOption.CompressionSetting = TC_Masks;
+    MasksOption.DisplayNameEn = "Masks (Recommended)";
+    MasksOption.DisplayNameJa = "マスク (推奨)";
+    CompressionOptions.Add(MakeShared<FCompressionOption>(MasksOption));
+
+    FCompressionOption GrayscaleOption;
+    GrayscaleOption.InternalName = "Grayscale";
+    GrayscaleOption.CompressionSetting = TC_Grayscale;
+    GrayscaleOption.DisplayNameEn = "Grayscale";
+    GrayscaleOption.DisplayNameJa = "グレースケール";
+    CompressionOptions.Add(MakeShared<FCompressionOption>(GrayscaleOption));
+
+    FCompressionOption DefaultOption;
+    DefaultOption.InternalName = "Default";
+    DefaultOption.CompressionSetting = TC_Default;
+    DefaultOption.DisplayNameEn = "Default";
+    DefaultOption.DisplayNameJa = "デフォルト";
+    CompressionOptions.Add(MakeShared<FCompressionOption>(DefaultOption));
+
     CurrentCompressionOption = CompressionOptions[0];
 
     // Register Nomad Tab
@@ -294,29 +317,29 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(SComboBox<TSharedPtr<FString>>)
+                    SNew(SComboBox<TSharedPtr<FCompressionOption>>)
                     .ToolTipText(GetLocalizedMessage(
                         TEXT("CompressionTooltip"),
                         TEXT("Select the compression method for the output texture.\n- Masks: Best for ORM (Occlusion, Roughness, Metallic) or other packed data. (Linear, no sRGB)\n- Grayscale: Best for single-channel values like Height or Alpha masks. (Linear)\n- Default: Standard compression. Not recommended for packed masks."),
                         TEXT("出力テクスチャの圧縮方式を選択します。\n- Masks: ORM (Occlusion, Roughness, Metallic) やパック済みデータに最適 (リニア, sRGBなし)\n- Grayscale: ハイトマップや単一マスクなど1チャンネルの値に最適 (リニア)\n- Default: 標準圧縮。パック済みマスクには非推奨")
                     ))
                     .OptionsSource(&CompressionOptions)
-                    .OnSelectionChanged_Lambda([this](TSharedPtr<FString> NewSelection, ESelectInfo::Type)
+                    .OnSelectionChanged_Lambda([this](TSharedPtr<FCompressionOption> NewSelection, ESelectInfo::Type)
                     {
                         if (NewSelection.IsValid())
                         {
                             CurrentCompressionOption = NewSelection;
                         }
                     })
-                    .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+                    .OnGenerateWidget_Lambda([](TSharedPtr<FCompressionOption> Item)
                     {
-                        return SNew(STextBlock).Text(FText::FromString(*Item));
+                        return SNew(STextBlock).Text(Item->GetDisplayName());
                     })
                     [
                         SNew(STextBlock)
                         .Text_Lambda([this]()
                         {
-                            return CurrentCompressionOption.IsValid() ? FText::FromString(*CurrentCompressionOption) : FText::GetEmpty();
+                            return CurrentCompressionOption.IsValid() ? CurrentCompressionOption->GetDisplayName() : FText::GetEmpty();
                         })
                     ]
                 ]
@@ -1117,10 +1140,7 @@ TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSe
 {
     if (CurrentCompressionOption.IsValid())
     {
-        const FString& Option = *CurrentCompressionOption;
-        if (Option == "Masks (Recommended)") return TC_Masks;
-        if (Option == "Grayscale") return TC_Grayscale;
-        if (Option == "Default") return TC_Default;
+        return CurrentCompressionOption->CompressionSetting;
     }
     return TC_Masks; // Fallback
 }
