@@ -319,21 +319,50 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                 [
                     SNew(STextBlock)
-                    .Text(LOCTEXT("ResolutionLabel", "Resolution (e.g. 2048)"))
-                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - 8192"), TEXT("有効範囲: 1 - 8192")))
+                    .Text(LOCTEXT("ResolutionLabel", "Resolution - Width \u00D7 Height (e.g. 2048 \u00D7 2048)"))
+                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Width and Height. Valid range: 1 - 8192 each."), TEXT("幅と高さ。有効範囲: それぞれ 1 - 8192")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(SNumericEntryBox<int32>)
-                    .Value_Lambda([this] { return TargetResolution; })
-                    .OnValueChanged_Lambda([this](int32 NewValue) { TargetResolution = NewValue; })
-                    .AllowSpin(true)
-                    .MinValue(1)
-                    .MaxValue(8192)
-                    .MinSliderValue(1)
-                    .MaxSliderValue(8192)
+                    SNew(SHorizontalBox)
+                    // Width
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    [
+                        SNew(SNumericEntryBox<int32>)
+                        .Value_Lambda([this] { return TargetWidth; })
+                        .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
+                        .AllowSpin(true)
+                        .MinValue(1)
+                        .MaxValue(8192)
+                        .MinSliderValue(1)
+                        .MaxSliderValue(8192)
+                    ]
+                    // "×" Separator
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(8.0f, 0.0f)
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\u00D7")))  // Unicode multiplication sign ×
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                    ]
+                    // Height
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    [
+                        SNew(SNumericEntryBox<int32>)
+                        .Value_Lambda([this] { return TargetHeight; })
+                        .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
+                        .AllowSpin(true)
+                        .MinValue(1)
+                        .MaxValue(8192)
+                        .MinSliderValue(1)
+                        .MaxSliderValue(8192)
+                    ]
                 ]
             ]
 
@@ -491,7 +520,7 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
         bInvertG ? TEXT("Yes") : TEXT("No"),
         bInvertB ? TEXT("Yes") : TEXT("No"),
         bInvertA ? TEXT("Yes") : TEXT("No"));
-    UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d"), TargetResolution);
+    UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d x %d"), TargetWidth, TargetHeight);
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
 
@@ -512,9 +541,9 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     }
 
     // Validation Check 3: Resolution is valid
-    if (TargetResolution < 1 || TargetResolution > 8192)
+    if (TargetWidth < 1 || TargetWidth > 8192 || TargetHeight < 1 || TargetHeight > 8192)
     {
-        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Resolution must be between 1 and 8192."), TEXT("解像度は 1 から 8192 の間で指定してください。"));
+        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Width and Height must each be between 1 and 8192."), TEXT("幅と高さはそれぞれ 1 から 8192 の間で指定してください。"));
         ShowNotification(Msg, false);
         return FReply::Handled();
     }
@@ -552,7 +581,7 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
         }
     }
 
-    CreateTexture(PackageName, TargetResolution);
+    CreateTexture(PackageName, TargetWidth, TargetHeight);
 
     return FReply::Handled();
 }
@@ -746,14 +775,15 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
  * This function is designed to be thread-safe and run in parallel tasks.
  *
  * @param Input The raw source data extracted from the input texture.
- * @param TargetSize The target resolution for the output (width and height).
+ * @param TargetWidth The target width for the output.
+ * @param TargetHeight The target height for the output.
  * @return FTextureProcessResult The processed single-channel 8-bit data.
  */
-static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetSize)
+static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight)
 {
     FTextureProcessResult Result;
     // Default to zero-filled array
-    Result.ProcessedData.Init(0, TargetSize * TargetSize);
+    Result.ProcessedData.Init(0, TargetWidth * TargetHeight);
 
     if (!Input.bIsValid)
     {
@@ -766,7 +796,7 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     const uint8* SrcData = Input.RawData.GetData();
 
     // Optimization: Fast path for same-resolution textures
-    if (SrcWidth == TargetSize && SrcHeight == TargetSize)
+    if (SrcWidth == TargetWidth && SrcHeight == TargetHeight)
     {
         if (Input.Format == TSF_G8)
         {
@@ -869,10 +899,10 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
 
     // Resize if necessary
     TArray<FColor> ResizedColors;
-    if (SrcWidth != TargetSize || SrcHeight != TargetSize)
+    if (SrcWidth != TargetWidth || SrcHeight != TargetHeight)
     {
-        ResizedColors.SetNum(TargetSize * TargetSize);
-        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetSize, TargetSize, ResizedColors, false);
+        ResizedColors.SetNum(TargetWidth * TargetHeight);
+        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetWidth, TargetHeight, ResizedColors, false);
     }
     else
     {
@@ -880,9 +910,9 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     }
 
     // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
-    Result.ProcessedData.SetNumUninitialized(TargetSize * TargetSize);
+    Result.ProcessedData.SetNumUninitialized(TargetWidth * TargetHeight);
     uint8* DestData = Result.ProcessedData.GetData();
-    for (int32 i = 0; i < TargetSize * TargetSize; ++i)
+    for (int32 i = 0; i < TargetWidth * TargetHeight; ++i)
     {
         const FColor& C = ResizedColors[i];
         DestData[i] = C.R;
@@ -891,7 +921,7 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     return Result;
 }
 
-void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Resolution)
+void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Width, int32 Height)
 {
     check(IsInGameThread());
 
@@ -1010,7 +1040,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     ParallelFor(4, [&](int32 Index)
     {
-        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Resolution);
+        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height);
     });
 
     if (SlowTask.ShouldCancel())
@@ -1051,7 +1081,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     // STEP 3: Write to Output Texture (Game Thread)
     // ---------------------------------------------------------
     // Initialize Source
-    NewTexture->Source.Init(Resolution, Resolution, 1, 1, TSF_BGRA8);
+    NewTexture->Source.Init(Width, Height, 1, 1, TSF_BGRA8);
 
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
         TEXT("ProgressWritingPixels"),
@@ -1104,31 +1134,31 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
         if (!PtrR)
         {
-            DefaultR.Init(0, Resolution * Resolution);
+            DefaultR.Init(0, Width * Height);
             if (bInvertR) InvertChannel(DefaultR);
             PtrR = DefaultR.GetData();
         }
         if (!PtrG)
         {
-            DefaultG.Init(0, Resolution * Resolution);
+            DefaultG.Init(0, Width * Height);
             if (bInvertG) InvertChannel(DefaultG);
             PtrG = DefaultG.GetData();
         }
         if (!PtrB)
         {
-            DefaultB.Init(0, Resolution * Resolution);
+            DefaultB.Init(0, Width * Height);
             if (bInvertB) InvertChannel(DefaultB);
             PtrB = DefaultB.GetData();
         }
         if (!PtrA)
         {
-            DefaultA.Init(255, Resolution * Resolution);
+            DefaultA.Init(255, Width * Height);
             if (bInvertA) InvertChannel(DefaultA);
             PtrA = DefaultA.GetData();
         }
 
         // Parallel, branch-free pixel writing
-        ParallelFor(Resolution * Resolution, [MipData, PtrR, PtrG, PtrB, PtrA](int32 i)
+        ParallelFor(Width * Height, [MipData, PtrR, PtrG, PtrB, PtrA](int32 i)
         {
             int32 Offset = i * 4;
             MipData[Offset + 0] = PtrB[i]; // B
