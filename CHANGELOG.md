@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-23
+
+### Added
+- **Invert Toggle**: Added a per-channel Invert checkbox next to each input slot label. When enabled, the channel values are flipped (`255 - Value`), useful for conversions like Roughness to Smoothness.
+- **Non-Square Output**: Width and Height can now be specified independently, replacing the single Resolution field. This enables non-square packed textures for use cases like UI atlases.
+- **Overwrite Confirmation**: A confirmation dialog now appears when the output asset already exists, preventing accidental data loss.
+
+### Changed
+- **Compression Settings Refactor**: Migrated internal compression option handling from string-based comparison to an enum/struct-based architecture (`FCompressionOption`), improving maintainability and localization safety.
+
 ## [1.2.0] - 2026-01-25
 
 ### Fixed
