@@ -130,10 +130,11 @@ void FTextureChannelPackerModule::ShutdownModule()
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 }
 
-TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, const FText& TooltipText)
+TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText)
 {
     // Capture the address of the member variable to update it inside the lambda
     TWeakObjectPtr<UTexture2D>* TexturePtr = &TargetTexturePtr;
+    bool* InvertPtr = &bInvertFlag;
 
     TSharedPtr<STextBlock> LabelWidget = SNew(STextBlock)
         .Text(LabelText)
@@ -149,7 +150,39 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FT
         .AutoHeight()
         .Padding(0.0f, 0.0f, 0.0f, 4.0f)
         [
-            LabelWidget.ToSharedRef()
+            SNew(SHorizontalBox)
+            // Label
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                LabelWidget.ToSharedRef()
+            ]
+            // Checkbox
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([InvertPtr]()
+                {
+                    return *InvertPtr ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([InvertPtr](ECheckBoxState NewState)
+                {
+                    *InvertPtr = (NewState == ECheckBoxState::Checked);
+                })
+            ]
+            // "Invert" Label
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("InvertLabel", "Invert"))
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+            ]
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -211,7 +244,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")),
-                    InputTextureR
+                    InputTextureR,
+                    bInvertR
                 )
             ]
 
@@ -222,7 +256,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")),
-                    InputTextureG
+                    InputTextureG,
+                    bInvertG
                 )
             ]
 
@@ -233,7 +268,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             [
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")),
-                    InputTextureB
+                    InputTextureB,
+                    bInvertB
                 )
             ]
 
@@ -245,6 +281,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 CreateChannelInputSlot(
                     GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")),
                     InputTextureA,
+                    bInvertA,
                     GetLocalizedMessage(
                         TEXT("AlphaChannelTooltip"),
                         TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
@@ -449,6 +486,11 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     UE_LOG(LogTexturePacker, Log, TEXT("Input Green: %s"), InputTextureG.IsValid() ? *InputTextureG->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Input Blue: %s"), InputTextureB.IsValid() ? *InputTextureB->GetPathName() : TEXT("None"));
     UE_LOG(LogTexturePacker, Log, TEXT("Input Alpha: %s"), InputTextureA.IsValid() ? *InputTextureA->GetPathName() : TEXT("None"));
+    UE_LOG(LogTexturePacker, Log, TEXT("Invert R: %s, G: %s, B: %s, A: %s"),
+        bInvertR ? TEXT("Yes") : TEXT("No"),
+        bInvertG ? TEXT("Yes") : TEXT("No"),
+        bInvertB ? TEXT("Yes") : TEXT("No"),
+        bInvertA ? TEXT("Yes") : TEXT("No"));
     UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d"), TargetResolution);
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
@@ -1033,6 +1075,20 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
+        // Invert channels if requested
+        auto InvertChannel = [](TArray<uint8>& Data)
+        {
+            for (int32 i = 0; i < Data.Num(); ++i)
+            {
+                Data[i] = 255 - Data[i];
+            }
+        };
+
+        if (bInvertR && ProcessedResults[0].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[0].ProcessedData);
+        if (bInvertG && ProcessedResults[1].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[1].ProcessedData);
+        if (bInvertB && ProcessedResults[2].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[2].ProcessedData);
+        if (bInvertA && ProcessedResults[3].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[3].ProcessedData);
+
         const uint8* TempR = ProcessedResults[0].ProcessedData.Num() > 0 ? ProcessedResults[0].ProcessedData.GetData() : nullptr;
         const uint8* TempG = ProcessedResults[1].ProcessedData.Num() > 0 ? ProcessedResults[1].ProcessedData.GetData() : nullptr;
         const uint8* TempB = ProcessedResults[2].ProcessedData.Num() > 0 ? ProcessedResults[2].ProcessedData.GetData() : nullptr;
@@ -1049,21 +1105,25 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         if (!PtrR)
         {
             DefaultR.Init(0, Resolution * Resolution);
+            if (bInvertR) InvertChannel(DefaultR);
             PtrR = DefaultR.GetData();
         }
         if (!PtrG)
         {
             DefaultG.Init(0, Resolution * Resolution);
+            if (bInvertG) InvertChannel(DefaultG);
             PtrG = DefaultG.GetData();
         }
         if (!PtrB)
         {
             DefaultB.Init(0, Resolution * Resolution);
+            if (bInvertB) InvertChannel(DefaultB);
             PtrB = DefaultB.GetData();
         }
         if (!PtrA)
         {
             DefaultA.Init(255, Resolution * Resolution);
+            if (bInvertA) InvertChannel(DefaultA);
             PtrA = DefaultA.GetData();
         }
 
