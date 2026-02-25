@@ -22,10 +22,14 @@ Drag your textures directly from the Content Browser into the slots.
 
 ### Step 3: Verify & Generate
 1.  Notice that the **Output File Name** is automatically generated (Smart Naming).
-2.  Click the **Folder Icon** if you need to change the save location.
-3.  Click **Generate Texture**.
+2.  Set the **Width** and **Height** for your output resolution (they can differ for non-square textures).
+3.  Toggle **Invert** on any channel if you need to flip values (e.g., Roughness → Smoothness).
+4.  Click the **Folder Icon** if you need to change the save location.
+5.  Click **Generate Texture**. If an asset with the same name exists, a confirmation dialog will appear.
 
 ## Pro Tips
 *   Empty R, G, B slots are automatically filled with **Black (0)**. Alpha defaults to **White (255)**.
 *   No need to resize textures beforehand; the tool handles it automatically.
 *   For ORM maps, leave the Compression setting on `Masks`.
+*   Use the **Invert** checkbox to flip values per-channel — no need to edit source textures.
+*   Width and Height can be set independently for non-square output textures.
