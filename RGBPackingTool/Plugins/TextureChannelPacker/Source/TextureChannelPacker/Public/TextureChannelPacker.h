@@ -166,10 +166,10 @@ private:
     /** The filename for the generated texture asset (without extension) */
     FString OutputFileName = "T_Packed_Texture";
 
-    /** Target width for the output texture (in pixels). Valid range: 1-8192. */
+    /** Target width for the output texture (in pixels). Valid range: 1-16384. */
     int32 TargetWidth = 2048;
 
-    /** Target height for the output texture (in pixels). Valid range: 1-8192. */
+    /** Target height for the output texture (in pixels). Valid range: 1-16384. */
     int32 TargetHeight = 2048;
 
     // ========== Compression Settings ==========

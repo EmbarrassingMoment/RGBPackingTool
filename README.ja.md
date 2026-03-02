@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.3.0-green?style=for-the-badge)](CHANGELOG.ja.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.4.0-green?style=for-the-badge)](CHANGELOG.ja.md)
 
 **TextureChannelPacker** は、個別のグレースケールテクスチャを1枚の出力テクスチャの R (赤)、G (緑)、B (青)、A (アルファ) チャンネルに効率的にパッキングするための Unreal Engine 5.7 用プラグインです。ORM（オクルージョン、ラフネス、メタリック）マップや、その他のチャンネルパッキングテクスチャを作成する際によく使用されます。
 
@@ -22,7 +22,7 @@
 - **拡張フォーマットサポート**:
   - **16bit グレースケール** および **32bit Float (SDF)** のソースフォーマットをサポートしており、「テクスチャが真っ黒になる」問題を防ぎ、高精度なデータを正しく処理します。
 - **出力設定**:
-  - **非正方形テクスチャ対応**: 幅と高さを個別に指定可能。UIアトラスなどの非正方形パックテクスチャに対応します。
+  - **非正方形テクスチャ対応**: 幅と高さを個別に指定可能（最大16384）。UIアトラスなどの非正方形パックテクスチャに対応します。
   - **圧縮設定**: ドロップダウンメニューから `Masks (推奨)`、`Grayscale`、`Default` を選択できます。
   - 出力先のパス、ファイル名、解像度をカスタマイズ可能です。
   - `sRGB = false` (リニアカラー) で `UTexture2D` アセットを生成します。
@@ -143,7 +143,7 @@ Fab ストアから入手するのが最も簡単で確実です。
 **A:** ORM（オクルージョン、ラフネス、メタリック）マップは、色情報ではなく「数値データ」として扱われるため、リニアカラー（sRGB = false）である必要があります。このツールは自動的に正しい設定（圧縮設定: Masks）を適用します。
 
 **Q: 8Kテクスチャなどの高解像度画像も処理できますか？**
-**A:** はい、対応しています。メモリ使用量を抑える最適化処理を実装しているため、4Kや8Kの大きなテクスチャでも安全に処理できます。
+**A:** はい、最大16Kまで対応可能です。メモリ使用量を抑える最適化処理を実装していますが、8Kを超える場合はメモリ消費に関する警告ダイアログが表示されます。
 
 **Q: どのようなファイル形式に対応していますか？**
 **A:** Unreal Engineがインポートできる一般的な形式（PNG, TGA, JPEG, PSD）に加え、**16-bit グレースケール** や **32-bit Float (EXR等)** のハイトマップ・SDF画像もサポートしており、精度を落とさずに処理できます。
