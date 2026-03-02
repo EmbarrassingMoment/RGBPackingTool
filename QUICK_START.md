@@ -23,6 +23,7 @@ Drag your textures directly from the Content Browser into the slots.
 ### Step 3: Verify & Generate
 1.  Notice that the **Output File Name** is automatically generated (Smart Naming).
 2.  Set the **Width** and **Height** for your output resolution (they can differ for non-square textures).
+    > **Note:** Resolutions above 8192px will show a memory warning dialog before processing.
 3.  Toggle **Invert** on any channel if you need to flip values (e.g., Roughness → Smoothness).
 4.  Click the **Folder Icon** if you need to change the save location.
 5.  Click **Generate Texture**. If an asset with the same name exists, a confirmation dialog will appear.
