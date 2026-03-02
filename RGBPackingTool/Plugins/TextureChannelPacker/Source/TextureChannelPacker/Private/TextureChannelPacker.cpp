@@ -320,7 +320,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 [
                     SNew(STextBlock)
                     .Text(LOCTEXT("ResolutionLabel", "Resolution - Width \u00D7 Height (e.g. 2048 \u00D7 2048)"))
-                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Width and Height. Valid range: 1 - 8192 each."), TEXT("幅と高さ。有効範囲: それぞれ 1 - 8192")))
+                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - 16384 each."), TEXT("有効範囲: それぞれ 1 - 16384")))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -336,9 +336,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
                         .AllowSpin(true)
                         .MinValue(1)
-                        .MaxValue(8192)
+                        .MaxValue(16384)
                         .MinSliderValue(1)
-                        .MaxSliderValue(8192)
+                        .MaxSliderValue(16384)
                     ]
                     // "×" Separator
                     + SHorizontalBox::Slot()
@@ -359,9 +359,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
                         .AllowSpin(true)
                         .MinValue(1)
-                        .MaxValue(8192)
+                        .MaxValue(16384)
                         .MinSliderValue(1)
-                        .MaxSliderValue(8192)
+                        .MaxSliderValue(16384)
                     ]
                 ]
             ]
@@ -541,11 +541,27 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     }
 
     // Validation Check 3: Resolution is valid
-    if (TargetWidth < 1 || TargetWidth > 8192 || TargetHeight < 1 || TargetHeight > 8192)
+    if (TargetWidth < 1 || TargetWidth > 16384 || TargetHeight < 1 || TargetHeight > 16384)
     {
-        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Width and Height must each be between 1 and 8192."), TEXT("幅と高さはそれぞれ 1 から 8192 の間で指定してください。"));
+        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Width and Height must each be between 1 and 16384."), TEXT("幅と高さはそれぞれ 1 から 16384 の間で指定してください。"));
         ShowNotification(Msg, false);
         return FReply::Handled();
+    }
+
+    // Memory Consumption Warning Check
+    if (TargetWidth > 8192 || TargetHeight > 8192)
+    {
+        FText Msg = GetLocalizedMessage(
+            TEXT("WarningHighResolution"),
+            TEXT("This resolution will consume a very large amount of memory. Processing may take a long time or become unstable. Do you want to continue?"),
+            TEXT("非常に大きなメモリを消費し、処理に時間がかかるか不安定になる可能性があります。続行しますか？")
+        );
+
+        EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
+        if (Result == EAppReturnType::No)
+        {
+            return FReply::Handled();
+        }
     }
 
     FString PackageName = OutputPackagePath;

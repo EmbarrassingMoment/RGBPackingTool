@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.3.0-green?style=for-the-badge)](CHANGELOG.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.4.0-green?style=for-the-badge)](CHANGELOG.md)
 [![Sponsor](https://img.shields.io/badge/Sponsor-EmbarrassingMoment-ff69b4?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/EmbarrassingMoment)
 
 **TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
@@ -23,7 +23,7 @@
 - **Extended Format Support**:
   - Supports **16-bit Grayscale** and **32-bit Float (SDF)** source formats, ensuring high-precision data is processed correctly without "black texture" issues.
 - **Output Configuration**:
-  - **Non-Square Output**: Width and Height can be specified independently, enabling non-square packed textures for UI atlases and other use cases.
+  - **Non-Square Output**: Width and Height can be specified independently (up to 16384), enabling non-square packed textures for UI atlases and other use cases.
   - **Compression Settings**: Select from `Masks (Recommended)`, `Grayscale`, or `Default` via a dropdown menu.
   - Customizes Output Path, File Name, and Resolution.
   - Generates `UTexture2D` assets with `sRGB = false` (linear color).
@@ -144,7 +144,7 @@ If you want the latest development version or need to modify the source code:
 **A:** Channel-packed textures (like ORM maps) contain data, not color, so they must be Linear (sRGB = false). This tool automatically applies the correct settings (Compression: Masks) for you.
 
 **Q: Does it support high-resolution textures like 8K?**
-**A:** Yes. The processing pipeline uses memory-optimized techniques to safely handle large assets like 4K and 8K textures.
+**A:** Yes, it now supports up to 16K resolution. The processing pipeline uses memory-optimized techniques to safely handle large assets. However, a memory consumption warning dialog will be displayed for resolutions exceeding 8K.
 
 **Q: What input formats are supported?**
 **A:** It supports standard formats (PNG, TGA, PSD) as well as **16-bit Grayscale** and **32-bit Float (e.g., EXR)** formats, ensuring high precision for Heightmaps and SDFs.
