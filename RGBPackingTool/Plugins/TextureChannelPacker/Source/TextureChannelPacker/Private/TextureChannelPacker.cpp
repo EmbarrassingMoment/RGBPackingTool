@@ -38,6 +38,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogTexturePacker, Log, All);
 
 static const FName TextureChannelPackerTabName("TextureChannelPacker");
 
+static constexpr int32 LargeTextureWarningThreshold = 8192;
+static constexpr int32 MaxTextureDimension = 16384;
+
 /**
  * @brief Retrieves a localized message based on the current culture.
  *
@@ -320,7 +323,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 [
                     SNew(STextBlock)
                     .Text(LOCTEXT("ResolutionLabel", "Resolution - Width \u00D7 Height (e.g. 2048 \u00D7 2048)"))
-                    .ToolTipText(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - 16384 each."), TEXT("有効範囲: それぞれ 1 - 16384")))
+                    .ToolTipText(FText::Format(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - {0} each."), TEXT("有効範囲: それぞれ 1 - {0}")), FText::AsNumber(MaxTextureDimension)))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                 ]
                 + SVerticalBox::Slot()
@@ -336,9 +339,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
                         .AllowSpin(true)
                         .MinValue(1)
-                        .MaxValue(16384)
+                        .MaxValue(MaxTextureDimension)
                         .MinSliderValue(1)
-                        .MaxSliderValue(16384)
+                        .MaxSliderValue(MaxTextureDimension)
                     ]
                     // "×" Separator
                     + SHorizontalBox::Slot()
@@ -359,9 +362,9 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
                         .AllowSpin(true)
                         .MinValue(1)
-                        .MaxValue(16384)
+                        .MaxValue(MaxTextureDimension)
                         .MinSliderValue(1)
-                        .MaxSliderValue(16384)
+                        .MaxSliderValue(MaxTextureDimension)
                     ]
                 ]
             ]
@@ -541,15 +544,15 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
     }
 
     // Validation Check 3: Resolution is valid
-    if (TargetWidth < 1 || TargetWidth > 16384 || TargetHeight < 1 || TargetHeight > 16384)
+    if (TargetWidth < 1 || TargetWidth > MaxTextureDimension || TargetHeight < 1 || TargetHeight > MaxTextureDimension)
     {
-        FText Msg = GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Width and Height must each be between 1 and 16384."), TEXT("幅と高さはそれぞれ 1 から 16384 の間で指定してください。"));
+        FText Msg = FText::Format(GetLocalizedMessage(TEXT("ErrorInvalidResolution"), TEXT("Width and Height must each be between 1 and {0}."), TEXT("幅と高さはそれぞれ 1 から {0} の間で指定してください。")), FText::AsNumber(MaxTextureDimension));
         ShowNotification(Msg, false);
         return FReply::Handled();
     }
 
     // Memory Consumption Warning Check
-    if (TargetWidth > 8192 || TargetHeight > 8192)
+    if (TargetWidth > LargeTextureWarningThreshold || TargetHeight > LargeTextureWarningThreshold)
     {
         FText Msg = GetLocalizedMessage(
             TEXT("WarningHighResolution"),
