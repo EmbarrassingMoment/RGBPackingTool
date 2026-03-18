@@ -8,7 +8,7 @@ public class RGBPackingToolEditorTarget : TargetRules
 	public RGBPackingToolEditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V6;
+		DefaultBuildSettings = BuildSettingsVersion.Latest;
 
 		ExtraModuleNames.AddRange( new string[] { "RGBPackingTool" } );
 	}
