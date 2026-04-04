@@ -31,6 +31,11 @@
 #include "Internationalization/Culture.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Async/ParallelFor.h"
+#include "Serialization/JsonWriter.h"
+#include "Serialization/JsonSerializer.h"
+#include "Misc/FileHelper.h"
+#include "HAL/PlatformFileManager.h"
+#include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -68,6 +73,144 @@ FText FCompressionOption::GetDisplayName() const
     return GetLocalizedMessage(InternalName, DisplayNameEn, DisplayNameJa);
 }
 
+// ========== FChannelPackerPreset Implementation ==========
+
+FText FChannelPackerPreset::GetDisplayName() const
+{
+    return FText::FromString(PresetName);
+}
+
+TSharedPtr<FJsonObject> FChannelPackerPreset::ToJson() const
+{
+    TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+    Json->SetNumberField(TEXT("Version"), 1);
+    Json->SetStringField(TEXT("PresetName"), PresetName);
+    Json->SetStringField(TEXT("RedLabelEn"), RedLabelEn);
+    Json->SetStringField(TEXT("RedLabelJa"), RedLabelJa);
+    Json->SetStringField(TEXT("GreenLabelEn"), GreenLabelEn);
+    Json->SetStringField(TEXT("GreenLabelJa"), GreenLabelJa);
+    Json->SetStringField(TEXT("BlueLabelEn"), BlueLabelEn);
+    Json->SetStringField(TEXT("BlueLabelJa"), BlueLabelJa);
+    Json->SetStringField(TEXT("AlphaLabelEn"), AlphaLabelEn);
+    Json->SetStringField(TEXT("AlphaLabelJa"), AlphaLabelJa);
+    Json->SetStringField(TEXT("FileNameSuffix"), FileNameSuffix);
+    Json->SetStringField(TEXT("DefaultCompressionName"), DefaultCompressionName);
+    Json->SetBoolField(TEXT("DefaultInvertR"), bDefaultInvertR);
+    Json->SetBoolField(TEXT("DefaultInvertG"), bDefaultInvertG);
+    Json->SetBoolField(TEXT("DefaultInvertB"), bDefaultInvertB);
+    Json->SetBoolField(TEXT("DefaultInvertA"), bDefaultInvertA);
+    return Json;
+}
+
+FChannelPackerPreset FChannelPackerPreset::FromJson(const TSharedPtr<FJsonObject>& JsonObject)
+{
+    FChannelPackerPreset Preset;
+    if (!JsonObject.IsValid())
+    {
+        return Preset;
+    }
+    Preset.PresetName = JsonObject->GetStringField(TEXT("PresetName"));
+    Preset.bIsBuiltIn = false;
+    Preset.RedLabelEn = JsonObject->GetStringField(TEXT("RedLabelEn"));
+    Preset.RedLabelJa = JsonObject->GetStringField(TEXT("RedLabelJa"));
+    Preset.GreenLabelEn = JsonObject->GetStringField(TEXT("GreenLabelEn"));
+    Preset.GreenLabelJa = JsonObject->GetStringField(TEXT("GreenLabelJa"));
+    Preset.BlueLabelEn = JsonObject->GetStringField(TEXT("BlueLabelEn"));
+    Preset.BlueLabelJa = JsonObject->GetStringField(TEXT("BlueLabelJa"));
+    Preset.AlphaLabelEn = JsonObject->GetStringField(TEXT("AlphaLabelEn"));
+    Preset.AlphaLabelJa = JsonObject->GetStringField(TEXT("AlphaLabelJa"));
+    Preset.FileNameSuffix = JsonObject->GetStringField(TEXT("FileNameSuffix"));
+    Preset.DefaultCompressionName = JsonObject->GetStringField(TEXT("DefaultCompressionName"));
+    Preset.bDefaultInvertR = JsonObject->GetBoolField(TEXT("DefaultInvertR"));
+    Preset.bDefaultInvertG = JsonObject->GetBoolField(TEXT("DefaultInvertG"));
+    Preset.bDefaultInvertB = JsonObject->GetBoolField(TEXT("DefaultInvertB"));
+    Preset.bDefaultInvertA = JsonObject->GetBoolField(TEXT("DefaultInvertA"));
+    return Preset;
+}
+
+// ========== Preset Persistence Helpers ==========
+
+static FString GetPresetsDirectory()
+{
+    return FPaths::ProjectSavedDir() / TEXT("TextureChannelPacker") / TEXT("Presets");
+}
+
+static FString SanitizePresetFileName(const FString& Name)
+{
+    FString Sanitized = Name;
+    // Remove characters that are invalid in filenames
+    Sanitized = Sanitized.Replace(TEXT("/"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("\\"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT(":"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("*"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("?"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("\""), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("<"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT(">"), TEXT("_"));
+    Sanitized = Sanitized.Replace(TEXT("|"), TEXT("_"));
+    return Sanitized;
+}
+
+static TArray<FChannelPackerPreset> LoadUserPresetsFromDisk()
+{
+    TArray<FChannelPackerPreset> Result;
+    FString PresetsDir = GetPresetsDirectory();
+
+    TArray<FString> FoundFiles;
+    IFileManager::Get().FindFiles(FoundFiles, *(PresetsDir / TEXT("*.json")), true, false);
+
+    for (const FString& FileName : FoundFiles)
+    {
+        FString FilePath = PresetsDir / FileName;
+        FString JsonString;
+        if (FFileHelper::LoadFileToString(JsonString, *FilePath))
+        {
+            TSharedPtr<FJsonObject> JsonObject;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+            if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+            {
+                FChannelPackerPreset Preset = FChannelPackerPreset::FromJson(JsonObject);
+                if (!Preset.PresetName.IsEmpty())
+                {
+                    Result.Add(Preset);
+                    UE_LOG(LogTexturePacker, Log, TEXT("Loaded user preset: %s"), *Preset.PresetName);
+                }
+            }
+            else
+            {
+                UE_LOG(LogTexturePacker, Warning, TEXT("Failed to parse preset file: %s"), *FilePath);
+            }
+        }
+    }
+    return Result;
+}
+
+static bool SavePresetToDisk(const FChannelPackerPreset& Preset)
+{
+    FString PresetsDir = GetPresetsDirectory();
+    IFileManager::Get().MakeDirectory(*PresetsDir, true);
+
+    FString FileName = SanitizePresetFileName(Preset.PresetName) + TEXT(".json");
+    FString FilePath = PresetsDir / FileName;
+
+    TSharedPtr<FJsonObject> JsonObject = Preset.ToJson();
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    if (FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer))
+    {
+        return FFileHelper::SaveStringToFile(JsonString, *FilePath);
+    }
+    return false;
+}
+
+static bool DeletePresetFromDisk(const FString& PresetName)
+{
+    FString PresetsDir = GetPresetsDirectory();
+    FString FileName = SanitizePresetFileName(PresetName) + TEXT(".json");
+    FString FilePath = PresetsDir / FileName;
+    return IFileManager::Get().Delete(*FilePath);
+}
+
 void FTextureChannelPackerModule::StartupModule()
 {
     // Initialize Compression Options
@@ -93,6 +236,17 @@ void FTextureChannelPackerModule::StartupModule()
     CompressionOptions.Add(MakeShared<FCompressionOption>(DefaultOption));
 
     CurrentCompressionOption = CompressionOptions[0];
+
+    // Initialize Built-in Presets
+    InitializeBuiltInPresets();
+    LoadPresetsFromDisk();
+
+    // Set ORM as the default active preset (index 1, after Custom)
+    if (Presets.Num() > 1)
+    {
+        CurrentPreset = Presets[1]; // ORM
+        CurrentFileNameSuffix = CurrentPreset->FileNameSuffix;
+    }
 
     // Register Nomad Tab
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TextureChannelPackerTabName, FOnSpawnTab::CreateRaw(this, &FTextureChannelPackerModule::OnSpawnPluginTab))
@@ -133,7 +287,7 @@ void FTextureChannelPackerModule::ShutdownModule()
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 }
 
-TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText)
+TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText)
 {
     // Capture the address of the member variable to update it inside the lambda
     TWeakObjectPtr<UTexture2D>* TexturePtr = &TargetTexturePtr;
@@ -171,9 +325,10 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const FT
                 {
                     return *InvertPtr ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
                 })
-                .OnCheckStateChanged_Lambda([InvertPtr](ECheckBoxState NewState)
+                .OnCheckStateChanged_Lambda([this, InvertPtr](ECheckBoxState NewState)
                 {
                     *InvertPtr = (NewState == ECheckBoxState::Checked);
+                    MarkCustomIfChanged();
                 })
             ]
             // "Invert" Label
@@ -240,13 +395,177 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         [
             SNew(SVerticalBox)
 
+            // Preset Selection
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                [
+                    SNew(STextBlock)
+                    .Text(GetLocalizedMessage(TEXT("PresetLabel"), TEXT("Preset"), TEXT("プリセット")))
+                    .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SHorizontalBox)
+                    // Preset Dropdown
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    [
+                        SAssignNew(PresetComboBox, SComboBox<TSharedPtr<FChannelPackerPreset>>)
+                        .OptionsSource(&Presets)
+                        .OnSelectionChanged_Lambda([this](TSharedPtr<FChannelPackerPreset> NewSelection, ESelectInfo::Type SelectInfo)
+                        {
+                            if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                            {
+                                ApplyPreset(NewSelection);
+                            }
+                        })
+                        .OnGenerateWidget_Lambda([](TSharedPtr<FChannelPackerPreset> Item)
+                        {
+                            return SNew(STextBlock).Text(Item->GetDisplayName());
+                        })
+                        [
+                            SNew(STextBlock)
+                            .Text_Lambda([this]()
+                            {
+                                return CurrentPreset.IsValid() ? CurrentPreset->GetDisplayName() : FText::GetEmpty();
+                            })
+                        ]
+                    ]
+                    // Save As Button
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(GetLocalizedMessage(TEXT("SaveAsButton"), TEXT("Save As..."), TEXT("名前を付けて保存...")))
+                        .OnClicked_Lambda([this]()
+                        {
+                            // Create a simple input dialog window
+                            TSharedRef<SWindow> SaveWindow = SNew(SWindow)
+                                .Title(GetLocalizedMessage(TEXT("SavePresetTitle"), TEXT("Save Preset"), TEXT("プリセットを保存")))
+                                .ClientSize(FVector2D(400.0f, 130.0f))
+                                .SupportsMinimize(false)
+                                .SupportsMaximize(false);
+
+                            TSharedPtr<SEditableTextBox> NameInput;
+
+                            SaveWindow->SetContent(
+                                SNew(SVerticalBox)
+                                + SVerticalBox::Slot()
+                                .AutoHeight()
+                                .Padding(10.0f)
+                                [
+                                    SNew(STextBlock)
+                                    .Text(GetLocalizedMessage(TEXT("EnterPresetName"), TEXT("Enter Preset Name:"), TEXT("プリセット名を入力:")))
+                                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                                ]
+                                + SVerticalBox::Slot()
+                                .AutoHeight()
+                                .Padding(10.0f, 0.0f)
+                                [
+                                    SAssignNew(NameInput, SEditableTextBox)
+                                    .Text(CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn
+                                        ? FText::FromString(CurrentPreset->PresetName)
+                                        : FText::GetEmpty())
+                                ]
+                                + SVerticalBox::Slot()
+                                .AutoHeight()
+                                .Padding(10.0f)
+                                .HAlign(HAlign_Right)
+                                [
+                                    SNew(SHorizontalBox)
+                                    + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                                    [
+                                        SNew(SButton)
+                                        .Text(LOCTEXT("OKButton", "OK"))
+                                        .OnClicked_Lambda([this, SaveWindow, NameInput]()
+                                        {
+                                            FString Name = NameInput->GetText().ToString().TrimStartAndEnd();
+                                            if (!Name.IsEmpty())
+                                            {
+                                                SaveCurrentAsPreset(Name);
+                                            }
+                                            FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
+                                            return FReply::Handled();
+                                        })
+                                    ]
+                                    + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    [
+                                        SNew(SButton)
+                                        .Text(LOCTEXT("CancelButton", "Cancel"))
+                                        .OnClicked_Lambda([SaveWindow]()
+                                        {
+                                            FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
+                                            return FReply::Handled();
+                                        })
+                                    ]
+                                ]
+                            );
+
+                            FSlateApplication::Get().AddModalWindow(SaveWindow, FSlateApplication::Get().GetActiveTopLevelWindow());
+                            return FReply::Handled();
+                        })
+                    ]
+                    // Delete Button
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SButton)
+                        .Text(GetLocalizedMessage(TEXT("DeleteButton"), TEXT("Delete"), TEXT("削除")))
+                        .IsEnabled_Lambda([this]()
+                        {
+                            return CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn;
+                        })
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn)
+                            {
+                                FText Msg = FText::Format(
+                                    GetLocalizedMessage(
+                                        TEXT("ConfirmDeletePreset"),
+                                        TEXT("Are you sure you want to delete the preset \"{0}\"?"),
+                                        TEXT("プリセット「{0}」を削除しますか？")
+                                    ),
+                                    FText::FromString(CurrentPreset->PresetName)
+                                );
+                                EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
+                                if (Result == EAppReturnType::Yes)
+                                {
+                                    DeleteCurrentPreset();
+                                }
+                            }
+                            return FReply::Handled();
+                        })
+                    ]
+                ]
+            ]
+
+            // Separator (after Preset)
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 5.0f)
+            [
+                SNew(SSeparator)
+            ]
+
             // Red Channel Input
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(10.0f)
             [
                 CreateChannelInputSlot(
-                    GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input (e.g. Ambient Occlusion)"), TEXT("Red Channel Input (例: アンビエントオクルージョン)")),
+                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentRedLabel)),
                     InputTextureR,
                     bInvertR
                 )
@@ -258,7 +577,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .Padding(10.0f)
             [
                 CreateChannelInputSlot(
-                    GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input (e.g. Roughness)"), TEXT("Green Channel Input (例: ラフネス)")),
+                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentGreenLabel)),
                     InputTextureG,
                     bInvertG
                 )
@@ -270,7 +589,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .Padding(10.0f)
             [
                 CreateChannelInputSlot(
-                    GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input (e.g. Metallic)"), TEXT("Blue Channel Input (例: メタリック)")),
+                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentBlueLabel)),
                     InputTextureB,
                     bInvertB
                 )
@@ -282,7 +601,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
             .Padding(10.0f)
             [
                 CreateChannelInputSlot(
-                    GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)")),
+                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentAlphaLabel)),
                     InputTextureA,
                     bInvertA,
                     GetLocalizedMessage(
@@ -398,6 +717,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         if (NewSelection.IsValid())
                         {
                             CurrentCompressionOption = NewSelection;
+                            MarkCustomIfChanged();
                         }
                     })
                     .OnGenerateWidget_Lambda([](TSharedPtr<FCompressionOption> Item)
@@ -666,7 +986,7 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
         BaseName.LeftChopInline(1);
     }
 
-    OutputFileName = BaseName + TEXT("_ORM");
+    OutputFileName = BaseName + CurrentFileNameSuffix;
 }
 
 /**
@@ -1252,6 +1572,284 @@ TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSe
         return CurrentCompressionOption->CompressionSetting;
     }
     return TC_Masks; // Fallback
+}
+
+// ========== Preset System Implementation ==========
+
+FText FTextureChannelPackerModule::GetCurrentRedLabel() const
+{
+    if (CurrentPreset.IsValid())
+    {
+        return GetLocalizedMessage(TEXT("RedChannelLabel"), CurrentPreset->RedLabelEn, CurrentPreset->RedLabelJa);
+    }
+    return GetLocalizedMessage(TEXT("RedChannelLabel"), TEXT("Red Channel Input"), TEXT("Red Channel Input"));
+}
+
+FText FTextureChannelPackerModule::GetCurrentGreenLabel() const
+{
+    if (CurrentPreset.IsValid())
+    {
+        return GetLocalizedMessage(TEXT("GreenChannelLabel"), CurrentPreset->GreenLabelEn, CurrentPreset->GreenLabelJa);
+    }
+    return GetLocalizedMessage(TEXT("GreenChannelLabel"), TEXT("Green Channel Input"), TEXT("Green Channel Input"));
+}
+
+FText FTextureChannelPackerModule::GetCurrentBlueLabel() const
+{
+    if (CurrentPreset.IsValid())
+    {
+        return GetLocalizedMessage(TEXT("BlueChannelLabel"), CurrentPreset->BlueLabelEn, CurrentPreset->BlueLabelJa);
+    }
+    return GetLocalizedMessage(TEXT("BlueChannelLabel"), TEXT("Blue Channel Input"), TEXT("Blue Channel Input"));
+}
+
+FText FTextureChannelPackerModule::GetCurrentAlphaLabel() const
+{
+    if (CurrentPreset.IsValid())
+    {
+        return GetLocalizedMessage(TEXT("AlphaChannelLabel"), CurrentPreset->AlphaLabelEn, CurrentPreset->AlphaLabelJa);
+    }
+    return GetLocalizedMessage(TEXT("AlphaChannelLabel"), TEXT("Alpha Channel Input (Optional)"), TEXT("Alpha Channel Input (任意)"));
+}
+
+void FTextureChannelPackerModule::InitializeBuiltInPresets()
+{
+    // Custom (sentinel - always first)
+    {
+        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
+        Preset->PresetName = TEXT("Custom");
+        Preset->bIsBuiltIn = true;
+        Preset->RedLabelEn = TEXT("Red Channel Input");
+        Preset->RedLabelJa = TEXT("Red Channel Input");
+        Preset->GreenLabelEn = TEXT("Green Channel Input");
+        Preset->GreenLabelJa = TEXT("Green Channel Input");
+        Preset->BlueLabelEn = TEXT("Blue Channel Input");
+        Preset->BlueLabelJa = TEXT("Blue Channel Input");
+        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
+        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
+        Preset->FileNameSuffix = TEXT("_Packed");
+        Preset->DefaultCompressionName = TEXT("Masks");
+        CustomPreset = Preset;
+        Presets.Add(Preset);
+    }
+
+    // ORM (default)
+    {
+        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
+        Preset->PresetName = TEXT("ORM");
+        Preset->bIsBuiltIn = true;
+        Preset->RedLabelEn = TEXT("Red Channel Input (e.g. Ambient Occlusion)");
+        Preset->RedLabelJa = TEXT("Red Channel Input (例: アンビエントオクルージョン)");
+        Preset->GreenLabelEn = TEXT("Green Channel Input (e.g. Roughness)");
+        Preset->GreenLabelJa = TEXT("Green Channel Input (例: ラフネス)");
+        Preset->BlueLabelEn = TEXT("Blue Channel Input (e.g. Metallic)");
+        Preset->BlueLabelJa = TEXT("Blue Channel Input (例: メタリック)");
+        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
+        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
+        Preset->FileNameSuffix = TEXT("_ORM");
+        Preset->DefaultCompressionName = TEXT("Masks");
+        Presets.Add(Preset);
+    }
+
+    // MRA
+    {
+        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
+        Preset->PresetName = TEXT("MRA");
+        Preset->bIsBuiltIn = true;
+        Preset->RedLabelEn = TEXT("Red Channel Input (e.g. Metallic)");
+        Preset->RedLabelJa = TEXT("Red Channel Input (例: メタリック)");
+        Preset->GreenLabelEn = TEXT("Green Channel Input (e.g. Roughness)");
+        Preset->GreenLabelJa = TEXT("Green Channel Input (例: ラフネス)");
+        Preset->BlueLabelEn = TEXT("Blue Channel Input (e.g. Ambient Occlusion)");
+        Preset->BlueLabelJa = TEXT("Blue Channel Input (例: アンビエントオクルージョン)");
+        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
+        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
+        Preset->FileNameSuffix = TEXT("_MRA");
+        Preset->DefaultCompressionName = TEXT("Masks");
+        Presets.Add(Preset);
+    }
+}
+
+void FTextureChannelPackerModule::LoadPresetsFromDisk()
+{
+    TArray<FChannelPackerPreset> UserPresets = LoadUserPresetsFromDisk();
+    for (FChannelPackerPreset& Preset : UserPresets)
+    {
+        Presets.Add(MakeShared<FChannelPackerPreset>(MoveTemp(Preset)));
+    }
+}
+
+void FTextureChannelPackerModule::ApplyPreset(TSharedPtr<FChannelPackerPreset> Preset)
+{
+    if (!Preset.IsValid())
+    {
+        return;
+    }
+
+    CurrentPreset = Preset;
+    CurrentFileNameSuffix = Preset->FileNameSuffix;
+
+    // Apply invert flags
+    bInvertR = Preset->bDefaultInvertR;
+    bInvertG = Preset->bDefaultInvertG;
+    bInvertB = Preset->bDefaultInvertB;
+    bInvertA = Preset->bDefaultInvertA;
+
+    // Apply compression option
+    for (const TSharedPtr<FCompressionOption>& Option : CompressionOptions)
+    {
+        if (Option->InternalName == Preset->DefaultCompressionName)
+        {
+            CurrentCompressionOption = Option;
+            break;
+        }
+    }
+
+    // Reset filename auto-generation
+    bFileNameManuallyEdited = false;
+    AutoGenerateFileName();
+
+    // Update combo box selection
+    if (PresetComboBox.IsValid())
+    {
+        PresetComboBox->SetSelectedItem(Preset);
+    }
+}
+
+void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
+{
+    FChannelPackerPreset NewPreset;
+    NewPreset.PresetName = Name;
+    NewPreset.bIsBuiltIn = false;
+
+    // Capture current labels from the active preset
+    if (CurrentPreset.IsValid())
+    {
+        NewPreset.RedLabelEn = CurrentPreset->RedLabelEn;
+        NewPreset.RedLabelJa = CurrentPreset->RedLabelJa;
+        NewPreset.GreenLabelEn = CurrentPreset->GreenLabelEn;
+        NewPreset.GreenLabelJa = CurrentPreset->GreenLabelJa;
+        NewPreset.BlueLabelEn = CurrentPreset->BlueLabelEn;
+        NewPreset.BlueLabelJa = CurrentPreset->BlueLabelJa;
+        NewPreset.AlphaLabelEn = CurrentPreset->AlphaLabelEn;
+        NewPreset.AlphaLabelJa = CurrentPreset->AlphaLabelJa;
+    }
+
+    NewPreset.FileNameSuffix = CurrentFileNameSuffix;
+    NewPreset.DefaultCompressionName = CurrentCompressionOption.IsValid() ? CurrentCompressionOption->InternalName : TEXT("Masks");
+    NewPreset.bDefaultInvertR = bInvertR;
+    NewPreset.bDefaultInvertG = bInvertG;
+    NewPreset.bDefaultInvertB = bInvertB;
+    NewPreset.bDefaultInvertA = bInvertA;
+
+    // Save to disk
+    if (SavePresetToDisk(NewPreset))
+    {
+        // Check if a preset with the same name already exists (update it)
+        bool bFound = false;
+        for (TSharedPtr<FChannelPackerPreset>& Existing : Presets)
+        {
+            if (!Existing->bIsBuiltIn && Existing->PresetName == Name)
+            {
+                *Existing = NewPreset;
+                CurrentPreset = Existing;
+                bFound = true;
+                break;
+            }
+        }
+
+        if (!bFound)
+        {
+            TSharedPtr<FChannelPackerPreset> NewPresetPtr = MakeShared<FChannelPackerPreset>(MoveTemp(NewPreset));
+            Presets.Add(NewPresetPtr);
+            CurrentPreset = NewPresetPtr;
+        }
+
+        // Refresh combo box
+        if (PresetComboBox.IsValid())
+        {
+            PresetComboBox->RefreshOptions();
+            PresetComboBox->SetSelectedItem(CurrentPreset);
+        }
+
+        FText Msg = FText::Format(
+            GetLocalizedMessage(TEXT("PresetSaved"), TEXT("Preset \"{0}\" saved."), TEXT("プリセット「{0}」を保存しました。")),
+            FText::FromString(Name)
+        );
+        ShowNotification(Msg, true);
+    }
+    else
+    {
+        FText Msg = GetLocalizedMessage(TEXT("PresetSaveFailed"), TEXT("Failed to save preset."), TEXT("プリセットの保存に失敗しました。"));
+        ShowNotification(Msg, false);
+    }
+}
+
+void FTextureChannelPackerModule::DeleteCurrentPreset()
+{
+    if (!CurrentPreset.IsValid() || CurrentPreset->bIsBuiltIn)
+    {
+        return;
+    }
+
+    FString PresetName = CurrentPreset->PresetName;
+
+    // Delete from disk
+    DeletePresetFromDisk(PresetName);
+
+    // Remove from array
+    Presets.Remove(CurrentPreset);
+
+    // Switch to Custom
+    CurrentPreset = CustomPreset;
+    CurrentFileNameSuffix = CustomPreset->FileNameSuffix;
+
+    // Refresh combo box
+    if (PresetComboBox.IsValid())
+    {
+        PresetComboBox->RefreshOptions();
+        PresetComboBox->SetSelectedItem(CustomPreset);
+    }
+
+    FText Msg = FText::Format(
+        GetLocalizedMessage(TEXT("PresetDeleted"), TEXT("Preset \"{0}\" deleted."), TEXT("プリセット「{0}」を削除しました。")),
+        FText::FromString(PresetName)
+    );
+    ShowNotification(Msg, true);
+}
+
+void FTextureChannelPackerModule::MarkCustomIfChanged()
+{
+    if (!CurrentPreset.IsValid() || CurrentPreset == CustomPreset)
+    {
+        return;
+    }
+
+    // Check if current settings differ from the active preset
+    bool bChanged = false;
+
+    if (bInvertR != CurrentPreset->bDefaultInvertR ||
+        bInvertG != CurrentPreset->bDefaultInvertG ||
+        bInvertB != CurrentPreset->bDefaultInvertB ||
+        bInvertA != CurrentPreset->bDefaultInvertA)
+    {
+        bChanged = true;
+    }
+
+    if (CurrentCompressionOption.IsValid() &&
+        CurrentCompressionOption->InternalName != CurrentPreset->DefaultCompressionName)
+    {
+        bChanged = true;
+    }
+
+    if (bChanged)
+    {
+        CurrentPreset = CustomPreset;
+        if (PresetComboBox.IsValid())
+        {
+            PresetComboBox->SetSelectedItem(CustomPreset);
+        }
+    }
 }
 
 #undef LOCTEXT_NAMESPACE

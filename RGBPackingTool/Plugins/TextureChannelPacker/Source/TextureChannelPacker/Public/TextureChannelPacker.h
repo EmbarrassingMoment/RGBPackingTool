@@ -4,10 +4,12 @@
 #include "Modules/ModuleManager.h"
 #include "Input/Reply.h"
 #include "Engine/Texture.h"
+#include "Dom/JsonObject.h"
 
 class SDockTab;
 class FSpawnTabArgs;
 class UTexture2D;
+template <typename OptionType> class SComboBox;
 
 /**
  * @struct FCompressionOption
@@ -34,6 +36,55 @@ struct FCompressionOption
      * @brief Returns the display name localized for the current editor language.
      * @return FText The localized display name.
      */
+    FText GetDisplayName() const;
+};
+
+/**
+ * @struct FChannelPackerPreset
+ * @brief Represents a saved channel packing configuration preset.
+ *
+ * Stores channel label descriptions, filename suffix, compression defaults,
+ * and invert flag defaults. Can be serialized to/from JSON for persistence.
+ */
+struct FChannelPackerPreset
+{
+    /** Display name for this preset (e.g., "ORM", "MRA") */
+    FString PresetName;
+
+    /** If true, this is a built-in preset that cannot be deleted by the user. */
+    bool bIsBuiltIn = false;
+
+    /** Channel label descriptions (English) */
+    FString RedLabelEn;
+    FString GreenLabelEn;
+    FString BlueLabelEn;
+    FString AlphaLabelEn;
+
+    /** Channel label descriptions (Japanese) */
+    FString RedLabelJa;
+    FString GreenLabelJa;
+    FString BlueLabelJa;
+    FString AlphaLabelJa;
+
+    /** Suffix appended to auto-generated filenames (e.g., "_ORM", "_MRA") */
+    FString FileNameSuffix;
+
+    /** Internal name of the default compression option (matches FCompressionOption::InternalName) */
+    FString DefaultCompressionName;
+
+    /** Default invert flags per channel */
+    bool bDefaultInvertR = false;
+    bool bDefaultInvertG = false;
+    bool bDefaultInvertB = false;
+    bool bDefaultInvertA = false;
+
+    /** Serializes this preset to a JSON object. */
+    TSharedPtr<FJsonObject> ToJson() const;
+
+    /** Deserializes a preset from a JSON object. */
+    static FChannelPackerPreset FromJson(const TSharedPtr<FJsonObject>& JsonObject);
+
+    /** Returns the localized display name for UI. */
     FText GetDisplayName() const;
 };
 
@@ -121,13 +172,13 @@ private:
      *
      * Includes a label, an optional tooltip, and an object picker for UTexture2D.
      *
-     * @param LabelText The display name for the channel (e.g., "Red Channel").
+     * @param LabelText Attribute for the display name (supports dynamic updates via lambda).
      * @param TargetTexturePtr A reference to the member variable that will hold the selected texture.
      * @param bInvertFlag A reference to the boolean flag controlling channel inversion.
      * @param TooltipText Optional tooltip text describing the channel's usage.
      * @return A shared reference to the created widget.
      */
-    TSharedRef<SWidget> CreateChannelInputSlot(const FText& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText = FText::GetEmpty());
+    TSharedRef<SWidget> CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText = FText::GetEmpty());
 
     // ========== Input Textures ==========
 
@@ -187,4 +238,51 @@ private:
      * When true, auto-generation of filenames is disabled to preserve user input.
      */
     bool bFileNameManuallyEdited = false;
+
+    // ========== Preset System ==========
+
+    /** All available presets (built-in + user-created). */
+    TArray<TSharedPtr<FChannelPackerPreset>> Presets;
+
+    /** The currently active preset. */
+    TSharedPtr<FChannelPackerPreset> CurrentPreset;
+
+    /** The "Custom" sentinel preset (always first in the list). */
+    TSharedPtr<FChannelPackerPreset> CustomPreset;
+
+    /** Suffix for auto-generated filenames, updated when preset changes. */
+    FString CurrentFileNameSuffix = TEXT("_ORM");
+
+    /** Weak reference to the preset combo box for refreshing options. */
+    TSharedPtr<SComboBox<TSharedPtr<FChannelPackerPreset>>> PresetComboBox;
+
+    /** Returns the localized Red channel label from the current preset. */
+    FText GetCurrentRedLabel() const;
+
+    /** Returns the localized Green channel label from the current preset. */
+    FText GetCurrentGreenLabel() const;
+
+    /** Returns the localized Blue channel label from the current preset. */
+    FText GetCurrentBlueLabel() const;
+
+    /** Returns the localized Alpha channel label from the current preset. */
+    FText GetCurrentAlphaLabel() const;
+
+    /** Creates and registers the built-in presets (Custom, ORM, MRA). */
+    void InitializeBuiltInPresets();
+
+    /** Loads user-created presets from disk and appends them to the Presets array. */
+    void LoadPresetsFromDisk();
+
+    /** Applies the given preset: updates labels, invert flags, compression, and suffix. */
+    void ApplyPreset(TSharedPtr<FChannelPackerPreset> Preset);
+
+    /** Saves the current settings as a named user preset to disk. */
+    void SaveCurrentAsPreset(const FString& Name);
+
+    /** Deletes the currently selected user preset from disk and the Presets array. */
+    void DeleteCurrentPreset();
+
+    /** Switches to "Custom" preset if current settings differ from the active preset. */
+    void MarkCustomIfChanged();
 };
