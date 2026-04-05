@@ -20,6 +20,7 @@
   - If an input texture is missing, the corresponding channel is filled with Black (0).
   - **Optional Alpha Channel**: If an Alpha texture is assigned, its Red channel is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
 - **Invert Toggle**: Each channel slot includes an Invert checkbox. When enabled, the channel values are flipped (`255 - Value`), useful for conversions like Roughness to Smoothness without a separate texture.
+- **Preset Management**: Save, load, and share channel packing configurations via a preset dropdown. Built-in presets include ORM and MRA. Custom presets are persisted as JSON files in `Saved/TextureChannelPacker/Presets/`, making it easy to share configurations across a team.
 - **Extended Format Support**:
   - Supports **16-bit Grayscale** and **32-bit Float (SDF)** source formats, ensuring high-precision data is processed correctly without "black texture" issues.
 - **Output Configuration**:
@@ -98,7 +99,19 @@ If you want the latest development version or need to modify the source code:
 1. **Open the Tool**:
    In the Unreal Editor, navigate to the main menu bar and select **Tools > Texture Packing**. This will open the Texture Channel Packer tab. You can dock this tab anywhere in your editor layout.
 
-2. **Assign Inputs**:
+2. **Select a Preset** (Optional):
+   At the top of the tool, choose a preset from the **Preset** dropdown to quickly configure channel labels and settings for your workflow:
+   - **ORM** (default): R=Ambient Occlusion, G=Roughness, B=Metallic — suffix `_ORM`
+   - **MRA**: R=Metallic, G=Roughness, B=Ambient Occlusion — suffix `_MRA`
+   - **Custom**: Appears automatically when you manually change settings away from a preset.
+
+   You can also:
+   - **Save As...**: Save the current configuration (channel labels, compression, invert flags, filename suffix) as a named preset.
+   - **Delete**: Remove a user-created preset (built-in presets cannot be deleted).
+
+   User presets are stored as JSON files in `<ProjectDir>/Saved/TextureChannelPacker/Presets/`. To share presets with your team, simply copy these files to other team members' projects.
+
+3. **Assign Inputs**:
    - **Red Channel Input**: Select a texture for the Red channel (e.g., Ambient Occlusion).
    - **Green Channel Input**: Select a texture for the Green channel (e.g., Roughness).
    - **Blue Channel Input**: Select a texture for the Blue channel (e.g., Metallic).
@@ -108,13 +121,13 @@ If you want the latest development version or need to modify the source code:
 
    *Note: You can **Drag & Drop** textures directly from the Content Browser into the slots. You can also leave any input empty; R/G/B channels will be filled with black if missing.*
 
-3. **Configure Output**:
+4. **Configure Output**:
    - **Resolution (Width × Height)**: Set the target width and height for the output texture independently (e.g., 2048 × 2048). Non-square resolutions are supported.
    - **Compression Settings**: Choose the compression type (default is `Masks`).
    - **Output Path**: Specify the game folder path. You can type it manually or click the **Folder Icon** to select a directory from the Content Browser.
    - **File Name**: Enter the desired name for the new texture asset.
 
-4. **Generate**:
+5. **Generate**:
    Click the **Generate Texture** button.
    - The tool will process the textures and create a new asset in the Content Browser at the specified location.
    - A Toast Notification will confirm if the operation was successful.
@@ -154,6 +167,12 @@ If you want the latest development version or need to modify the source code:
 
 **Q: Can I create non-square textures?**
 **A:** Yes. Since v1.3.0, Width and Height can be specified independently, allowing you to create textures like 2048×1024.
+
+**Q: How do I share presets with my team?**
+**A:** User-created presets are saved as individual JSON files in `<ProjectDir>/Saved/TextureChannelPacker/Presets/`. Copy these `.json` files to the same directory in other team members' projects. They will appear in the Preset dropdown the next time the editor is launched.
+
+**Q: What settings are saved in a preset?**
+**A:** A preset stores: channel label descriptions (in English and Japanese), the auto-filename suffix (e.g., `_ORM`), the default compression setting, and default invert flags for each channel. Input textures and output paths are **not** included in presets.
 
 ## License
 
