@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-05
+
+### Added
+- **Preset Management**: Added a preset dropdown at the top of the tool UI that allows users to save, load, and delete channel packing configurations. Includes built-in presets for common workflows:
+  - **ORM** (default): R=Ambient Occlusion, G=Roughness, B=Metallic — suffix `_ORM`
+  - **MRA**: R=Metallic, G=Roughness, B=Ambient Occlusion — suffix `_MRA`
+  - **Custom**: Automatically selected when the user manually changes settings.
+- **Preset Persistence**: User-created presets are saved as individual JSON files in `Saved/TextureChannelPacker/Presets/`, enabling easy sharing of configurations across team members.
+- **Dynamic Channel Labels**: Channel input labels now update automatically when switching presets, reflecting the expected texture type for each slot (e.g., "Red Channel Input (e.g. Metallic)" for MRA).
+- **Preset-Aware Filename Suffix**: The auto-generated output filename now uses the active preset's suffix (e.g., `_ORM`, `_MRA`, `_Packed`) instead of the hardcoded `_ORM`.
+
 ## [1.4.0] - 2026-03-01
 
 ### Added
