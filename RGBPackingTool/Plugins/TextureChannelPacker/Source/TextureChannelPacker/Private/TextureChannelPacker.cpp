@@ -36,6 +36,7 @@
 #include "Misc/FileHelper.h"
 #include "HAL/PlatformFileManager.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -395,38 +396,328 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         [
             SNew(SVerticalBox)
 
-            // Preset Selection
+            // Scrollable content area
             + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
+            .FillHeight(1.0f)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                SNew(SScrollBox)
+
+                // Preset Selection
+                + SScrollBox::Slot()
+                .Padding(10.0f)
+                [
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                    [
+                        SNew(STextBlock)
+                        .Text(GetLocalizedMessage(TEXT("PresetLabel"), TEXT("Preset"), TEXT("プリセット")))
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+                    ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SHorizontalBox)
+                        // Preset Dropdown
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        [
+                            SAssignNew(PresetComboBox, SComboBox<TSharedPtr<FChannelPackerPreset>>)
+                            .OptionsSource(&Presets)
+                            .OnSelectionChanged_Lambda([this](TSharedPtr<FChannelPackerPreset> NewSelection, ESelectInfo::Type SelectInfo)
+                            {
+                                if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                                {
+                                    ApplyPreset(NewSelection);
+                                }
+                            })
+                            .OnGenerateWidget_Lambda([](TSharedPtr<FChannelPackerPreset> Item)
+                            {
+                                return SNew(STextBlock).Text(Item->GetDisplayName());
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Text_Lambda([this]()
+                                {
+                                    return CurrentPreset.IsValid() ? CurrentPreset->GetDisplayName() : FText::GetEmpty();
+                                })
+                            ]
+                        ]
+                        // Save As Button
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(SButton)
+                            .Text(GetLocalizedMessage(TEXT("SaveAsButton"), TEXT("Save As..."), TEXT("名前を付けて保存...")))
+                            .OnClicked_Lambda([this]()
+                            {
+                                // Create a simple input dialog window
+                                TSharedRef<SWindow> SaveWindow = SNew(SWindow)
+                                    .Title(GetLocalizedMessage(TEXT("SavePresetTitle"), TEXT("Save Preset"), TEXT("プリセットを保存")))
+                                    .ClientSize(FVector2D(400.0f, 130.0f))
+                                    .SupportsMinimize(false)
+                                    .SupportsMaximize(false);
+
+                                TSharedPtr<SEditableTextBox> NameInput;
+
+                                SaveWindow->SetContent(
+                                    SNew(SVerticalBox)
+                                    + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(10.0f)
+                                    [
+                                        SNew(STextBlock)
+                                        .Text(GetLocalizedMessage(TEXT("EnterPresetName"), TEXT("Enter Preset Name:"), TEXT("プリセット名を入力:")))
+                                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                                    ]
+                                    + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(10.0f, 0.0f)
+                                    [
+                                        SAssignNew(NameInput, SEditableTextBox)
+                                        .Text(CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn
+                                            ? FText::FromString(CurrentPreset->PresetName)
+                                            : FText::GetEmpty())
+                                    ]
+                                    + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(10.0f)
+                                    .HAlign(HAlign_Right)
+                                    [
+                                        SNew(SHorizontalBox)
+                                        + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                                        [
+                                            SNew(SButton)
+                                            .Text(LOCTEXT("OKButton", "OK"))
+                                            .OnClicked_Lambda([this, SaveWindow, NameInput]()
+                                            {
+                                                FString Name = NameInput->GetText().ToString().TrimStartAndEnd();
+                                                if (!Name.IsEmpty())
+                                                {
+                                                    SaveCurrentAsPreset(Name);
+                                                }
+                                                FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
+                                                return FReply::Handled();
+                                            })
+                                        ]
+                                        + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        [
+                                            SNew(SButton)
+                                            .Text(LOCTEXT("CancelButton", "Cancel"))
+                                            .OnClicked_Lambda([SaveWindow]()
+                                            {
+                                                FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
+                                                return FReply::Handled();
+                                            })
+                                        ]
+                                    ]
+                                );
+
+                                FSlateApplication::Get().AddModalWindow(SaveWindow, FSlateApplication::Get().GetActiveTopLevelWindow());
+                                return FReply::Handled();
+                            })
+                        ]
+                        // Delete Button
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(SButton)
+                            .Text(GetLocalizedMessage(TEXT("DeleteButton"), TEXT("Delete"), TEXT("削除")))
+                            .IsEnabled_Lambda([this]()
+                            {
+                                return CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn;
+                            })
+                            .OnClicked_Lambda([this]()
+                            {
+                                if (CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn)
+                                {
+                                    FText Msg = FText::Format(
+                                        GetLocalizedMessage(
+                                            TEXT("ConfirmDeletePreset"),
+                                            TEXT("Are you sure you want to delete the preset \"{0}\"?"),
+                                            TEXT("プリセット「{0}」を削除しますか？")
+                                        ),
+                                        FText::FromString(CurrentPreset->PresetName)
+                                    );
+                                    EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
+                                    if (Result == EAppReturnType::Yes)
+                                    {
+                                        DeleteCurrentPreset();
+                                    }
+                                }
+                                return FReply::Handled();
+                            })
+                        ]
+                    ]
+                ]
+
+                // Separator (after Preset)
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
+                [
+                    SNew(SSeparator)
+                ]
+
+                // Red Channel Input
+                + SScrollBox::Slot()
+                .Padding(10.0f)
+                [
+                    CreateChannelInputSlot(
+                        TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentRedLabel)),
+                        InputTextureR,
+                        bInvertR
+                    )
+                ]
+
+                // Green Channel Input
+                + SScrollBox::Slot()
+                .Padding(10.0f)
+                [
+                    CreateChannelInputSlot(
+                        TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentGreenLabel)),
+                        InputTextureG,
+                        bInvertG
+                    )
+                ]
+
+                // Blue Channel Input
+                + SScrollBox::Slot()
+                .Padding(10.0f)
+                [
+                    CreateChannelInputSlot(
+                        TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentBlueLabel)),
+                        InputTextureB,
+                        bInvertB
+                    )
+                ]
+
+                // Alpha Channel Input (with Tooltip)
+                + SScrollBox::Slot()
+                .Padding(10.0f)
+                [
+                    CreateChannelInputSlot(
+                        TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentAlphaLabel)),
+                        InputTextureA,
+                        bInvertA,
+                        GetLocalizedMessage(
+                            TEXT("AlphaChannelTooltip"),
+                            TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
+                            TEXT("空の場合は白 (255) で塗りつぶされ、不透明になります。独自のアルファマスクを使用する場合はテクスチャを指定してください。")
+                        )
+                    )
+                ]
+
+                // Separator
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
+                [
+                    SNew(SSeparator)
+                ]
+
+                // Output Settings Header
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
                 [
                     SNew(STextBlock)
-                    .Text(GetLocalizedMessage(TEXT("PresetLabel"), TEXT("Preset"), TEXT("プリセット")))
+                    .Text(LOCTEXT("OutputSettingsLabel", "Output Settings"))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
                 ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
+
+                // Resolution
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
                 [
-                    SNew(SHorizontalBox)
-                    // Preset Dropdown
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                     [
-                        SAssignNew(PresetComboBox, SComboBox<TSharedPtr<FChannelPackerPreset>>)
-                        .OptionsSource(&Presets)
-                        .OnSelectionChanged_Lambda([this](TSharedPtr<FChannelPackerPreset> NewSelection, ESelectInfo::Type SelectInfo)
+                        SNew(STextBlock)
+                        .Text(LOCTEXT("ResolutionLabel", "Resolution - Width \u00D7 Height (e.g. 2048 \u00D7 2048)"))
+                        .ToolTipText(FText::Format(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - {0} each."), TEXT("有効範囲: それぞれ 1 - {0}")), FText::AsNumber(MaxTextureDimension)))
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                    ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SHorizontalBox)
+                        // Width
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        [
+                            SNew(SNumericEntryBox<int32>)
+                            .Value_Lambda([this] { return TargetWidth; })
+                            .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
+                            .AllowSpin(true)
+                            .MinValue(1)
+                            .MaxValue(MaxTextureDimension)
+                            .MinSliderValue(1)
+                            .MaxSliderValue(MaxTextureDimension)
+                        ]
+                        // "×" Separator
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(8.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("\u00D7")))  // Unicode multiplication sign ×
+                            .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                        ]
+                        // Height
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        [
+                            SNew(SNumericEntryBox<int32>)
+                            .Value_Lambda([this] { return TargetHeight; })
+                            .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
+                            .AllowSpin(true)
+                            .MinValue(1)
+                            .MaxValue(MaxTextureDimension)
+                            .MinSliderValue(1)
+                            .MaxSliderValue(MaxTextureDimension)
+                        ]
+                    ]
+                ]
+
+                // Compression Settings
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
+                [
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                    [
+                        SNew(STextBlock)
+                        .Text(LOCTEXT("CompressionLabel", "Compression"))
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                    ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SComboBox<TSharedPtr<FCompressionOption>>)
+                        .ToolTipText(GetLocalizedMessage(
+                            TEXT("CompressionTooltip"),
+                            TEXT("Select the compression method for the output texture.\n- Masks: Best for ORM (Occlusion, Roughness, Metallic) or other packed data. (Linear, no sRGB)\n- Grayscale: Best for single-channel values like Height or Alpha masks. (Linear)\n- Default: Standard compression. Not recommended for packed masks."),
+                            TEXT("出力テクスチャの圧縮方式を選択します。\n- Masks: ORM (Occlusion, Roughness, Metallic) やパック済みデータに最適 (リニア, sRGBなし)\n- Grayscale: ハイトマップや単一マスクなど1チャンネルの値に最適 (リニア)\n- Default: 標準圧縮。パック済みマスクには非推奨")
+                        ))
+                        .OptionsSource(&CompressionOptions)
+                        .OnSelectionChanged_Lambda([this](TSharedPtr<FCompressionOption> NewSelection, ESelectInfo::Type)
                         {
-                            if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                            if (NewSelection.IsValid())
                             {
-                                ApplyPreset(NewSelection);
+                                CurrentCompressionOption = NewSelection;
+                                MarkCustomIfChanged();
                             }
                         })
-                        .OnGenerateWidget_Lambda([](TSharedPtr<FChannelPackerPreset> Item)
+                        .OnGenerateWidget_Lambda([](TSharedPtr<FCompressionOption> Item)
                         {
                             return SNew(STextBlock).Text(Item->GetDisplayName());
                         })
@@ -434,380 +725,76 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             SNew(STextBlock)
                             .Text_Lambda([this]()
                             {
-                                return CurrentPreset.IsValid() ? CurrentPreset->GetDisplayName() : FText::GetEmpty();
+                                return CurrentCompressionOption.IsValid() ? CurrentCompressionOption->GetDisplayName() : FText::GetEmpty();
                             })
                         ]
                     ]
-                    // Save As Button
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                        .Text(GetLocalizedMessage(TEXT("SaveAsButton"), TEXT("Save As..."), TEXT("名前を付けて保存...")))
-                        .OnClicked_Lambda([this]()
-                        {
-                            // Create a simple input dialog window
-                            TSharedRef<SWindow> SaveWindow = SNew(SWindow)
-                                .Title(GetLocalizedMessage(TEXT("SavePresetTitle"), TEXT("Save Preset"), TEXT("プリセットを保存")))
-                                .ClientSize(FVector2D(400.0f, 130.0f))
-                                .SupportsMinimize(false)
-                                .SupportsMaximize(false);
-
-                            TSharedPtr<SEditableTextBox> NameInput;
-
-                            SaveWindow->SetContent(
-                                SNew(SVerticalBox)
-                                + SVerticalBox::Slot()
-                                .AutoHeight()
-                                .Padding(10.0f)
-                                [
-                                    SNew(STextBlock)
-                                    .Text(GetLocalizedMessage(TEXT("EnterPresetName"), TEXT("Enter Preset Name:"), TEXT("プリセット名を入力:")))
-                                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                                ]
-                                + SVerticalBox::Slot()
-                                .AutoHeight()
-                                .Padding(10.0f, 0.0f)
-                                [
-                                    SAssignNew(NameInput, SEditableTextBox)
-                                    .Text(CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn
-                                        ? FText::FromString(CurrentPreset->PresetName)
-                                        : FText::GetEmpty())
-                                ]
-                                + SVerticalBox::Slot()
-                                .AutoHeight()
-                                .Padding(10.0f)
-                                .HAlign(HAlign_Right)
-                                [
-                                    SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot()
-                                    .AutoWidth()
-                                    .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                                    [
-                                        SNew(SButton)
-                                        .Text(LOCTEXT("OKButton", "OK"))
-                                        .OnClicked_Lambda([this, SaveWindow, NameInput]()
-                                        {
-                                            FString Name = NameInput->GetText().ToString().TrimStartAndEnd();
-                                            if (!Name.IsEmpty())
-                                            {
-                                                SaveCurrentAsPreset(Name);
-                                            }
-                                            FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
-                                            return FReply::Handled();
-                                        })
-                                    ]
-                                    + SHorizontalBox::Slot()
-                                    .AutoWidth()
-                                    [
-                                        SNew(SButton)
-                                        .Text(LOCTEXT("CancelButton", "Cancel"))
-                                        .OnClicked_Lambda([SaveWindow]()
-                                        {
-                                            FSlateApplication::Get().RequestDestroyWindow(SaveWindow);
-                                            return FReply::Handled();
-                                        })
-                                    ]
-                                ]
-                            );
-
-                            FSlateApplication::Get().AddModalWindow(SaveWindow, FSlateApplication::Get().GetActiveTopLevelWindow());
-                            return FReply::Handled();
-                        })
-                    ]
-                    // Delete Button
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                        .Text(GetLocalizedMessage(TEXT("DeleteButton"), TEXT("Delete"), TEXT("削除")))
-                        .IsEnabled_Lambda([this]()
-                        {
-                            return CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn;
-                        })
-                        .OnClicked_Lambda([this]()
-                        {
-                            if (CurrentPreset.IsValid() && !CurrentPreset->bIsBuiltIn)
-                            {
-                                FText Msg = FText::Format(
-                                    GetLocalizedMessage(
-                                        TEXT("ConfirmDeletePreset"),
-                                        TEXT("Are you sure you want to delete the preset \"{0}\"?"),
-                                        TEXT("プリセット「{0}」を削除しますか？")
-                                    ),
-                                    FText::FromString(CurrentPreset->PresetName)
-                                );
-                                EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
-                                if (Result == EAppReturnType::Yes)
-                                {
-                                    DeleteCurrentPreset();
-                                }
-                            }
-                            return FReply::Handled();
-                        })
-                    ]
                 ]
-            ]
 
-            // Separator (after Preset)
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SSeparator)
-            ]
-
-            // Red Channel Input
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                CreateChannelInputSlot(
-                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentRedLabel)),
-                    InputTextureR,
-                    bInvertR
-                )
-            ]
-
-            // Green Channel Input
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                CreateChannelInputSlot(
-                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentGreenLabel)),
-                    InputTextureG,
-                    bInvertG
-                )
-            ]
-
-            // Blue Channel Input
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                CreateChannelInputSlot(
-                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentBlueLabel)),
-                    InputTextureB,
-                    bInvertB
-                )
-            ]
-
-            // Alpha Channel Input (with Tooltip)
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                CreateChannelInputSlot(
-                    TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentAlphaLabel)),
-                    InputTextureA,
-                    bInvertA,
-                    GetLocalizedMessage(
-                        TEXT("AlphaChannelTooltip"),
-                        TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
-                        TEXT("空の場合は白 (255) で塗りつぶされ、不透明になります。独自のアルファマスクを使用する場合はテクスチャを指定してください。")
-                    )
-                )
-            ]
-
-            // Separator
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SSeparator)
-            ]
-
-            // Output Settings Header
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(STextBlock)
-                .Text(LOCTEXT("OutputSettingsLabel", "Output Settings"))
-                .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
-            ]
-
-            // Resolution
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                // Output Path
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
                 [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("ResolutionLabel", "Resolution - Width \u00D7 Height (e.g. 2048 \u00D7 2048)"))
-                    .ToolTipText(FText::Format(GetLocalizedMessage(TEXT("ResolutionTooltip"), TEXT("Valid range: 1 - {0} each."), TEXT("有効範囲: それぞれ 1 - {0}")), FText::AsNumber(MaxTextureDimension)))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SHorizontalBox)
-                    // Width
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    [
-                        SNew(SNumericEntryBox<int32>)
-                        .Value_Lambda([this] { return TargetWidth; })
-                        .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
-                        .AllowSpin(true)
-                        .MinValue(1)
-                        .MaxValue(MaxTextureDimension)
-                        .MinSliderValue(1)
-                        .MaxSliderValue(MaxTextureDimension)
-                    ]
-                    // "×" Separator
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(8.0f, 0.0f)
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                     [
                         SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("\u00D7")))  // Unicode multiplication sign ×
+                        .Text(LOCTEXT("OutputPathLabel", "Output Path (e.g. /Game/...)"))
                         .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
                     ]
-                    // Height
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
                     [
-                        SNew(SNumericEntryBox<int32>)
-                        .Value_Lambda([this] { return TargetHeight; })
-                        .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
-                        .AllowSpin(true)
-                        .MinValue(1)
-                        .MaxValue(MaxTextureDimension)
-                        .MinSliderValue(1)
-                        .MaxSliderValue(MaxTextureDimension)
+                        SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .HAlign(HAlign_Fill)
+                        [
+                            SNew(SEditableTextBox)
+                            .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
+                            .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
+                        ]
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        [
+                            PathPickerComboButton
+                        ]
                     ]
                 ]
-            ]
 
-            // Compression Settings
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
+                // File Name
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
                 [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("CompressionLabel", "Compression"))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SComboBox<TSharedPtr<FCompressionOption>>)
-                    .ToolTipText(GetLocalizedMessage(
-                        TEXT("CompressionTooltip"),
-                        TEXT("Select the compression method for the output texture.\n- Masks: Best for ORM (Occlusion, Roughness, Metallic) or other packed data. (Linear, no sRGB)\n- Grayscale: Best for single-channel values like Height or Alpha masks. (Linear)\n- Default: Standard compression. Not recommended for packed masks."),
-                        TEXT("出力テクスチャの圧縮方式を選択します。\n- Masks: ORM (Occlusion, Roughness, Metallic) やパック済みデータに最適 (リニア, sRGBなし)\n- Grayscale: ハイトマップや単一マスクなど1チャンネルの値に最適 (リニア)\n- Default: 標準圧縮。パック済みマスクには非推奨")
-                    ))
-                    .OptionsSource(&CompressionOptions)
-                    .OnSelectionChanged_Lambda([this](TSharedPtr<FCompressionOption> NewSelection, ESelectInfo::Type)
-                    {
-                        if (NewSelection.IsValid())
-                        {
-                            CurrentCompressionOption = NewSelection;
-                            MarkCustomIfChanged();
-                        }
-                    })
-                    .OnGenerateWidget_Lambda([](TSharedPtr<FCompressionOption> Item)
-                    {
-                        return SNew(STextBlock).Text(Item->GetDisplayName());
-                    })
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                     [
                         SNew(STextBlock)
-                        .Text_Lambda([this]()
+                        .Text(LOCTEXT("FileNameLabel", "File Name"))
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                    ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SEditableTextBox)
+                        .Text_Lambda([this] { return FText::FromString(OutputFileName); })
+                        .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type CommitType)
                         {
-                            return CurrentCompressionOption.IsValid() ? CurrentCompressionOption->GetDisplayName() : FText::GetEmpty();
+                            OutputFileName = NewText.ToString();
+                            if (CommitType == ETextCommit::OnEnter || CommitType == ETextCommit::OnUserMovedFocus)
+                            {
+                                bFileNameManuallyEdited = true;
+                            }
                         })
                     ]
                 ]
-            ]
+            ] // end SScrollBox
 
-            // Output Path
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("OutputPathLabel", "Output Path (e.g. /Game/...)"))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .HAlign(HAlign_Fill)
-                    [
-                        SNew(SEditableTextBox)
-                        .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
-                        .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
-                    ]
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    [
-                        PathPickerComboButton
-                    ]
-                ]
-            ]
-
-            // File Name
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f, 5.0f)
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("FileNameLabel", "File Name"))
-                    .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SEditableTextBox)
-                    .Text_Lambda([this] { return FText::FromString(OutputFileName); })
-                    .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type CommitType)
-                    {
-                        OutputFileName = NewText.ToString();
-                        if (CommitType == ETextCommit::OnEnter || CommitType == ETextCommit::OnUserMovedFocus)
-                        {
-                            bFileNameManuallyEdited = true;
-                        }
-                    })
-                ]
-            ]
-
-            // Spacer
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(10.0f)
-            [
-                SNew(SSpacer)
-                .Size(FVector2D(0.0f, 10.0f))
-            ]
-
-            // Generate Button
+            // Generate Button (pinned at bottom, always visible)
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(20.0f)

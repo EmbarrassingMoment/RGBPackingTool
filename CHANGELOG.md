@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dynamic Channel Labels**: Channel input labels now update automatically when switching presets, reflecting the expected texture type for each slot (e.g., "Red Channel Input (e.g. Metallic)" for MRA).
 - **Preset-Aware Filename Suffix**: The auto-generated output filename now uses the active preset's suffix (e.g., `_ORM`, `_MRA`, `_Packed`) instead of the hardcoded `_ORM`.
 
+### Changed
+- **Scrollable UI with Pinned Generate Button**: The tool window content is now wrapped in a scroll view, and the "Generate Texture" button is pinned to the bottom of the window. This ensures the button is always visible regardless of window size.
+
 ## [1.4.0] - 2026-03-01
 
 ### Added
