@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.4.0-green?style=for-the-badge)](CHANGELOG.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.6.0-green?style=for-the-badge)](CHANGELOG.md)
 [![Sponsor](https://img.shields.io/badge/Sponsor-EmbarrassingMoment-ff69b4?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/EmbarrassingMoment)
 
 **TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
@@ -16,9 +16,10 @@
 - **4-Channel Packing (RGBA)**: Takes up to four input textures and packs their Red channels into the output's Red, Green, Blue, and Alpha channels respectively.
 - **Auto-Resizing**: Automatically resizes input textures to match the specified target resolution using High-Quality Bilinear Interpolation (`FImageUtils`).
 - **Input Handling**:
-  - Reads the **Red channel** from each source texture.
+  - Reads the selected channel from each source texture (defaults to **Red**).
+  - **Source Channel Selector**: A per-slot dropdown lets you pick R/G/B/A from the input texture, so you can source data from a color or already-packed texture without first splitting it. Ignored for single-channel grayscale formats.
   - If an input texture is missing, the corresponding channel is filled with Black (0).
-  - **Optional Alpha Channel**: If an Alpha texture is assigned, its Red channel is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
+  - **Optional Alpha Channel**: If an Alpha texture is assigned, the selected channel of that texture is used. If left empty, the Alpha channel defaults to White (255) for full opacity.
 - **Invert Toggle**: Each channel slot includes an Invert checkbox. When enabled, the channel values are flipped (`255 - Value`), useful for conversions like Roughness to Smoothness without a separate texture.
 - **Preset Management**: Save, load, and share channel packing configurations via a preset dropdown. Built-in presets include ORM and MRA. Custom presets are persisted as JSON files in `Saved/TextureChannelPacker/Presets/`, making it easy to share configurations across a team.
 - **Extended Format Support**:

@@ -74,6 +74,36 @@ FText FCompressionOption::GetDisplayName() const
     return GetLocalizedMessage(InternalName, DisplayNameEn, DisplayNameJa);
 }
 
+// ========== Source Channel Helpers ==========
+
+/** Short single-letter label for a source channel (R/G/B/A) for compact UI. */
+static FString SourceChannelToShortString(ESourceChannel Ch)
+{
+    switch (Ch)
+    {
+    case ESourceChannel::Red:   return TEXT("R");
+    case ESourceChannel::Green: return TEXT("G");
+    case ESourceChannel::Blue:  return TEXT("B");
+    case ESourceChannel::Alpha: return TEXT("A");
+    }
+    return TEXT("R");
+}
+
+/** Stable string id for serialization. */
+static FString SourceChannelToId(ESourceChannel Ch)
+{
+    return SourceChannelToShortString(Ch);
+}
+
+/** Inverse of SourceChannelToId. Returns Red if the id is unrecognized. */
+static ESourceChannel SourceChannelFromId(const FString& Id)
+{
+    if (Id == TEXT("G")) return ESourceChannel::Green;
+    if (Id == TEXT("B")) return ESourceChannel::Blue;
+    if (Id == TEXT("A")) return ESourceChannel::Alpha;
+    return ESourceChannel::Red;
+}
+
 // ========== FChannelPackerPreset Implementation ==========
 
 FText FChannelPackerPreset::GetDisplayName() const
@@ -100,6 +130,10 @@ TSharedPtr<FJsonObject> FChannelPackerPreset::ToJson() const
     Json->SetBoolField(TEXT("DefaultInvertG"), bDefaultInvertG);
     Json->SetBoolField(TEXT("DefaultInvertB"), bDefaultInvertB);
     Json->SetBoolField(TEXT("DefaultInvertA"), bDefaultInvertA);
+    Json->SetStringField(TEXT("DefaultSourceChannelR"), SourceChannelToId(DefaultSourceChannelR));
+    Json->SetStringField(TEXT("DefaultSourceChannelG"), SourceChannelToId(DefaultSourceChannelG));
+    Json->SetStringField(TEXT("DefaultSourceChannelB"), SourceChannelToId(DefaultSourceChannelB));
+    Json->SetStringField(TEXT("DefaultSourceChannelA"), SourceChannelToId(DefaultSourceChannelA));
     return Json;
 }
 
@@ -126,6 +160,15 @@ FChannelPackerPreset FChannelPackerPreset::FromJson(const TSharedPtr<FJsonObject
     Preset.bDefaultInvertG = JsonObject->GetBoolField(TEXT("DefaultInvertG"));
     Preset.bDefaultInvertB = JsonObject->GetBoolField(TEXT("DefaultInvertB"));
     Preset.bDefaultInvertA = JsonObject->GetBoolField(TEXT("DefaultInvertA"));
+
+    // Source channel fields are optional for backward compatibility with v1.5.0 presets;
+    // missing fields default to Red.
+    FString ChannelId;
+    if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelR"), ChannelId)) Preset.DefaultSourceChannelR = SourceChannelFromId(ChannelId);
+    if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelG"), ChannelId)) Preset.DefaultSourceChannelG = SourceChannelFromId(ChannelId);
+    if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelB"), ChannelId)) Preset.DefaultSourceChannelB = SourceChannelFromId(ChannelId);
+    if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelA"), ChannelId)) Preset.DefaultSourceChannelA = SourceChannelFromId(ChannelId);
+
     return Preset;
 }
 
@@ -238,6 +281,12 @@ void FTextureChannelPackerModule::StartupModule()
 
     CurrentCompressionOption = CompressionOptions[0];
 
+    // Initialize source channel options (shared by all four input slots)
+    SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Red));
+    SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Green));
+    SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Blue));
+    SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Alpha));
+
     // Initialize Built-in Presets
     InitializeBuiltInPresets();
     LoadPresetsFromDisk();
@@ -288,11 +337,12 @@ void FTextureChannelPackerModule::ShutdownModule()
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 }
 
-TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText)
+TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, ESourceChannel& SourceChannelRef, const FText& TooltipText)
 {
     // Capture the address of the member variable to update it inside the lambda
     TWeakObjectPtr<UTexture2D>* TexturePtr = &TargetTexturePtr;
     bool* InvertPtr = &bInvertFlag;
+    ESourceChannel* SourceChannelPtr = &SourceChannelRef;
 
     TSharedPtr<STextBlock> LabelWidget = SNew(STextBlock)
         .Text(LabelText)
@@ -302,6 +352,12 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TA
     {
         LabelWidget->SetToolTipText(TooltipText);
     }
+
+    const FText SourceChannelTooltip = GetLocalizedMessage(
+        TEXT("SourceChannelTooltip"),
+        TEXT("Which channel of the input texture to read from. Useful when sourcing data from a color or already-packed texture. Ignored for single-channel grayscale formats."),
+        TEXT("入力テクスチャから読み取るチャンネルを選択します。カラーテクスチャや既存のパック済みテクスチャから特定チャンネルを取り出す場合に便利です。グレースケール形式では無視されます。")
+    );
 
     return SNew(SVerticalBox)
         + SVerticalBox::Slot()
@@ -315,6 +371,46 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TA
             .VAlign(VAlign_Center)
             [
                 LabelWidget.ToSharedRef()
+            ]
+            // "Source" Label
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(GetLocalizedMessage(TEXT("SourceChannelLabel"), TEXT("Source"), TEXT("ソース")))
+                .ToolTipText(SourceChannelTooltip)
+                .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+            ]
+            // Source Channel Dropdown
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SComboBox<TSharedPtr<ESourceChannel>>)
+                .ToolTipText(SourceChannelTooltip)
+                .OptionsSource(&SourceChannelOptions)
+                .OnSelectionChanged_Lambda([this, SourceChannelPtr](TSharedPtr<ESourceChannel> NewSelection, ESelectInfo::Type SelectInfo)
+                {
+                    if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                    {
+                        *SourceChannelPtr = *NewSelection;
+                        MarkCustomIfChanged();
+                    }
+                })
+                .OnGenerateWidget_Lambda([](TSharedPtr<ESourceChannel> Item)
+                {
+                    return SNew(STextBlock).Text(FText::FromString(SourceChannelToShortString(*Item)));
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([SourceChannelPtr]()
+                    {
+                        return FText::FromString(SourceChannelToShortString(*SourceChannelPtr));
+                    })
+                ]
             ]
             // Checkbox
             + SHorizontalBox::Slot()
@@ -571,7 +667,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     CreateChannelInputSlot(
                         TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentRedLabel)),
                         InputTextureR,
-                        bInvertR
+                        bInvertR,
+                        SourceChannelR
                     )
                 ]
 
@@ -582,7 +679,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     CreateChannelInputSlot(
                         TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentGreenLabel)),
                         InputTextureG,
-                        bInvertG
+                        bInvertG,
+                        SourceChannelG
                     )
                 ]
 
@@ -593,7 +691,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     CreateChannelInputSlot(
                         TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentBlueLabel)),
                         InputTextureB,
-                        bInvertB
+                        bInvertB,
+                        SourceChannelB
                     )
                 ]
 
@@ -605,6 +704,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateRaw(this, &FTextureChannelPackerModule::GetCurrentAlphaLabel)),
                         InputTextureA,
                         bInvertA,
+                        SourceChannelA,
                         GetLocalizedMessage(
                             TEXT("AlphaChannelTooltip"),
                             TEXT("If left empty, fills with White (255) to ensure opacity. Assign a texture to pack a custom Alpha mask."),
@@ -830,6 +930,22 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
         bInvertG ? TEXT("Yes") : TEXT("No"),
         bInvertB ? TEXT("Yes") : TEXT("No"),
         bInvertA ? TEXT("Yes") : TEXT("No"));
+    auto ChannelToString = [](ESourceChannel Ch) -> const TCHAR*
+    {
+        switch (Ch)
+        {
+        case ESourceChannel::Red:   return TEXT("R");
+        case ESourceChannel::Green: return TEXT("G");
+        case ESourceChannel::Blue:  return TEXT("B");
+        case ESourceChannel::Alpha: return TEXT("A");
+        default:                    return TEXT("?");
+        }
+    };
+    UE_LOG(LogTexturePacker, Log, TEXT("Source Channel R<-%s, G<-%s, B<-%s, A<-%s"),
+        ChannelToString(SourceChannelR),
+        ChannelToString(SourceChannelG),
+        ChannelToString(SourceChannelB),
+        ChannelToString(SourceChannelA));
     UE_LOG(LogTexturePacker, Log, TEXT("Resolution: %d x %d"), TargetWidth, TargetHeight);
     UE_LOG(LogTexturePacker, Log, TEXT("Output Path: %s"), *OutputPackagePath);
     UE_LOG(LogTexturePacker, Log, TEXT("File Name: %s"), *OutputFileName);
@@ -1094,18 +1210,62 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
 }
 
 /**
+ * @brief Returns the byte offset of the requested channel within a BGRA8 pixel.
+ *
+ * BGRA8 lays out bytes as [B, G, R, A], so Red=2, Green=1, Blue=0, Alpha=3.
+ */
+static int32 GetBGRAChannelOffset(ESourceChannel Channel)
+{
+    switch (Channel)
+    {
+    case ESourceChannel::Red:   return 2;
+    case ESourceChannel::Green: return 1;
+    case ESourceChannel::Blue:  return 0;
+    case ESourceChannel::Alpha: return 3;
+    default:                    return 2;
+    }
+}
+
+/**
+ * @brief Extracts the requested channel value from an FColor.
+ */
+static uint8 ExtractChannelFromFColor(const FColor& C, ESourceChannel Channel)
+{
+    switch (Channel)
+    {
+    case ESourceChannel::Red:   return C.R;
+    case ESourceChannel::Green: return C.G;
+    case ESourceChannel::Blue:  return C.B;
+    case ESourceChannel::Alpha: return C.A;
+    default:                    return C.R;
+    }
+}
+
+/**
+ * @brief Returns true for source formats that physically only carry one channel of data.
+ *
+ * For these formats, the channel selector is meaningless — the lone luminance value is
+ * always used regardless of which output channel the user picks.
+ */
+static bool IsSingleChannelFormat(ETextureSourceFormat Format)
+{
+    return Format == TSF_G8 || Format == TSF_G16 || Format == TSF_R16F || Format == TSF_R32F;
+}
+
+/**
  * @brief Processes raw texture data to produce a single channel of output.
  *
  * This function handles resizing (using FImageUtils) and format conversion (e.g., extracting
- * the Red channel from BGRA, or converting 16-bit grayscale to 8-bit).
+ * the selected channel from BGRA/RGBA, or converting 16-bit grayscale to 8-bit).
  * This function is designed to be thread-safe and run in parallel tasks.
  *
  * @param Input The raw source data extracted from the input texture.
  * @param TargetWidth The target width for the output.
  * @param TargetHeight The target height for the output.
+ * @param SourceChannel Which channel of the input to read (R/G/B/A). Ignored for single-channel formats.
  * @return FTextureProcessResult The processed single-channel 8-bit data.
  */
-static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight)
+static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel)
 {
     FTextureProcessResult Result;
     // Default to zero-filled array
@@ -1126,20 +1286,22 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     {
         if (Input.Format == TSF_G8)
         {
-            // Direct move for Grayscale input (zero-copy optimization)
+            // Direct move for Grayscale input (zero-copy optimization).
+            // Channel selection is moot for single-channel data.
             Result.ProcessedData = MoveTemp(Input.RawData);
             return Result;
         }
         else if (Input.Format == TSF_BGRA8)
         {
-            // Parallel Red-channel extraction for BGRA input
+            // Parallel channel extraction for BGRA input
             Result.ProcessedData.SetNumUninitialized(NumPixels);
             uint8* DestData = Result.ProcessedData.GetData();
             const uint8* SrcPtr = SrcData;
+            const int32 ChannelOffset = GetBGRAChannelOffset(SourceChannel);
 
-            ParallelFor(NumPixels, [DestData, SrcPtr](int32 i)
+            ParallelFor(NumPixels, [DestData, SrcPtr, ChannelOffset](int32 i)
             {
-                DestData[i] = SrcPtr[i * 4 + 2]; // R channel in BGRA
+                DestData[i] = SrcPtr[i * 4 + ChannelOffset];
             });
             return Result;
         }
@@ -1148,7 +1310,9 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     TArray<FColor> SrcColors;
     SrcColors.SetNumUninitialized(NumPixels);
 
-    // Convert input to FColor (BGRA)
+    // Convert input to FColor (RGBA values stored in FColor's R/G/B/A members).
+    // For single-channel formats we replicate the value across R/G/B so that channel
+    // selection still produces the expected result.
     switch (Input.Format)
     {
     case TSF_BGRA8:
@@ -1201,12 +1365,16 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
     }
     case TSF_RGBA32F:
     {
-        // Linear Color: 16 bytes per pixel
+        // Linear Color: 16 bytes per pixel. Preserve all four channels so the user can pick any.
         const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            uint8 Val = (uint8)FMath::Clamp<float>(LinearColors[i].R * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
+            const FLinearColor& LC = LinearColors[i];
+            uint8 R = (uint8)FMath::Clamp<float>(LC.R * 255.0f, 0.0f, 255.0f);
+            uint8 G = (uint8)FMath::Clamp<float>(LC.G * 255.0f, 0.0f, 255.0f);
+            uint8 B = (uint8)FMath::Clamp<float>(LC.B * 255.0f, 0.0f, 255.0f);
+            uint8 A = (uint8)FMath::Clamp<float>(LC.A * 255.0f, 0.0f, 255.0f);
+            SrcColors[i] = FColor(R, G, B, A);
         }
         break;
     }
@@ -1235,13 +1403,16 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
         ResizedColors = MoveTemp(SrcColors);
     }
 
-    // Convert FColor (BGRA) to uint8 array (Grayscale, 1 byte per pixel)
+    // For single-channel source formats, the channel selection has no effect (R=G=B).
+    // We always read R to keep the inner loop branch-free.
+    const ESourceChannel EffectiveChannel = IsSingleChannelFormat(Input.Format) ? ESourceChannel::Red : SourceChannel;
+
+    // Convert FColor to uint8 array (single channel, 1 byte per pixel)
     Result.ProcessedData.SetNumUninitialized(TargetWidth * TargetHeight);
     uint8* DestData = Result.ProcessedData.GetData();
     for (int32 i = 0; i < TargetWidth * TargetHeight; ++i)
     {
-        const FColor& C = ResizedColors[i];
-        DestData[i] = C.R;
+        DestData[i] = ExtractChannelFromFColor(ResizedColors[i], EffectiveChannel);
     }
 
     return Result;
@@ -1364,9 +1535,11 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     TArray<FTextureProcessResult> ProcessedResults;
     ProcessedResults.SetNum(4);
 
+    const ESourceChannel SourceChannels[4] = { SourceChannelR, SourceChannelG, SourceChannelB, SourceChannelA };
+
     ParallelFor(4, [&](int32 Index)
     {
-        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height);
+        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height, SourceChannels[Index]);
     });
 
     if (SlowTask.ShouldCancel())
@@ -1682,6 +1855,12 @@ void FTextureChannelPackerModule::ApplyPreset(TSharedPtr<FChannelPackerPreset> P
     bInvertB = Preset->bDefaultInvertB;
     bInvertA = Preset->bDefaultInvertA;
 
+    // Apply source channel selection
+    SourceChannelR = Preset->DefaultSourceChannelR;
+    SourceChannelG = Preset->DefaultSourceChannelG;
+    SourceChannelB = Preset->DefaultSourceChannelB;
+    SourceChannelA = Preset->DefaultSourceChannelA;
+
     // Apply compression option
     for (const TSharedPtr<FCompressionOption>& Option : CompressionOptions)
     {
@@ -1728,6 +1907,10 @@ void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
     NewPreset.bDefaultInvertG = bInvertG;
     NewPreset.bDefaultInvertB = bInvertB;
     NewPreset.bDefaultInvertA = bInvertA;
+    NewPreset.DefaultSourceChannelR = SourceChannelR;
+    NewPreset.DefaultSourceChannelG = SourceChannelG;
+    NewPreset.DefaultSourceChannelB = SourceChannelB;
+    NewPreset.DefaultSourceChannelA = SourceChannelA;
 
     // Save to disk
     if (SavePresetToDisk(NewPreset))
@@ -1819,6 +2002,14 @@ void FTextureChannelPackerModule::MarkCustomIfChanged()
         bInvertG != CurrentPreset->bDefaultInvertG ||
         bInvertB != CurrentPreset->bDefaultInvertB ||
         bInvertA != CurrentPreset->bDefaultInvertA)
+    {
+        bChanged = true;
+    }
+
+    if (SourceChannelR != CurrentPreset->DefaultSourceChannelR ||
+        SourceChannelG != CurrentPreset->DefaultSourceChannelG ||
+        SourceChannelB != CurrentPreset->DefaultSourceChannelB ||
+        SourceChannelA != CurrentPreset->DefaultSourceChannelA)
     {
         bChanged = true;
     }

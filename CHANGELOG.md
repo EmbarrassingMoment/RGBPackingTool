@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-07
+
+### Added
+- **Source Channel Selector**: Each input slot now has a dropdown to choose which channel (R/G/B/A) of the input texture to read from. Previously the tool always read the Red channel, which made it awkward to source data from color or already-packed textures. Now you can, for example, swap just the G channel (Roughness) of an existing ORM map without first splitting it into individual textures.
+  - For single-channel grayscale formats (G8/G16/R16F/R32F) the selection is ignored and the lone luminance value is used.
+  - The selection is saved per preset so common channel layouts can be reused (older preset files load with missing fields defaulting to Red).
+- **Preserve All RGBA32F Channels**: 32-bit float color inputs now preserve all four channels instead of only Red, allowing the new channel selector to operate on G/B/A as well.
+
 ## [1.5.0] - 2026-04-05
 
 ### Added

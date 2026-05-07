@@ -12,6 +12,22 @@ class UTexture2D;
 template <typename OptionType> class SComboBox;
 
 /**
+ * @enum ESourceChannel
+ * @brief Identifies which channel of an input texture to read from.
+ *
+ * Used to let users pick R/G/B/A from each input texture instead of always reading Red.
+ * For single-channel source formats (G8, G16, R16F, R32F), the selection is ignored
+ * and the only available value is used.
+ */
+enum class ESourceChannel : uint8
+{
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+    Alpha = 3
+};
+
+/**
  * @struct FCompressionOption
  * @brief Represents a texture compression configuration option.
  *
@@ -77,6 +93,12 @@ struct FChannelPackerPreset
     bool bDefaultInvertG = false;
     bool bDefaultInvertB = false;
     bool bDefaultInvertA = false;
+
+    /** Default source channel selection per output slot (which channel of the input texture to read). */
+    ESourceChannel DefaultSourceChannelR = ESourceChannel::Red;
+    ESourceChannel DefaultSourceChannelG = ESourceChannel::Red;
+    ESourceChannel DefaultSourceChannelB = ESourceChannel::Red;
+    ESourceChannel DefaultSourceChannelA = ESourceChannel::Red;
 
     /** Serializes this preset to a JSON object. */
     TSharedPtr<FJsonObject> ToJson() const;
@@ -178,7 +200,7 @@ private:
      * @param TooltipText Optional tooltip text describing the channel's usage.
      * @return A shared reference to the created widget.
      */
-    TSharedRef<SWidget> CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, const FText& TooltipText = FText::GetEmpty());
+    TSharedRef<SWidget> CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, ESourceChannel& SourceChannelRef, const FText& TooltipText = FText::GetEmpty());
 
     // ========== Input Textures ==========
 
@@ -193,6 +215,12 @@ private:
 
     /** Flag to invert the Alpha channel input (255 - Value). */
     bool bInvertA = false;
+
+    /** Which channel of the input texture to read for each output slot. Defaults to Red. */
+    ESourceChannel SourceChannelR = ESourceChannel::Red;
+    ESourceChannel SourceChannelG = ESourceChannel::Red;
+    ESourceChannel SourceChannelB = ESourceChannel::Red;
+    ESourceChannel SourceChannelA = ESourceChannel::Red;
 
     /** Texture to be packed into the Red channel of the output (e.g., Ambient Occlusion) */
     TWeakObjectPtr<UTexture2D> InputTextureR;
@@ -255,6 +283,9 @@ private:
 
     /** Weak reference to the preset combo box for refreshing options. */
     TSharedPtr<SComboBox<TSharedPtr<FChannelPackerPreset>>> PresetComboBox;
+
+    /** Shared option list (R/G/B/A) backing the per-slot source channel dropdowns. */
+    TArray<TSharedPtr<ESourceChannel>> SourceChannelOptions;
 
     /** Returns the localized Red channel label from the current preset. */
     FText GetCurrentRedLabel() const;
