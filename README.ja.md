@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.4.0-green?style=for-the-badge)](CHANGELOG.ja.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.6.0-green?style=for-the-badge)](CHANGELOG.ja.md)
 
 **TextureChannelPacker** は、個別のグレースケールテクスチャを1枚の出力テクスチャの R (赤)、G (緑)、B (青)、A (アルファ) チャンネルに効率的にパッキングするための Unreal Engine 5.7 用プラグインです。ORM（オクルージョン、ラフネス、メタリック）マップや、その他のチャンネルパッキングテクスチャを作成する際によく使用されます。
 
@@ -15,9 +15,10 @@
 - **4チャンネルパッキング (RGBA)**: 最大4枚の入力テクスチャを受け取り、それぞれの赤 (Red) チャンネルを出力テクスチャの R、G、B、A チャンネルに割り当てます。
 - **自動リサイズ**: 指定されたターゲット解像度に合わせて、入力テクスチャを自動的にリサイズします。リサイズ処理には高品質なバイリニア補間（`FImageUtils`）が使用されます。
 - **入力処理**:
-  - 各ソーステクスチャから **Redチャンネル** の値を読み取ります。
+  - 各ソーステクスチャから選択したチャンネル（デフォルトは **Red**）の値を読み取ります。
+  - **入力チャンネル選択 (Source Channel Selector)**: 各スロットのドロップダウンから R/G/B/A の中で読み取るチャンネルを選択できます。カラーテクスチャや既存のパック済みテクスチャを事前に分離せずにそのまま入力として活用できます。グレースケール形式の入力では選択は無視されます。
   - 入力テクスチャが指定されていない場合、対応する R/G/B チャンネルは黒（0）で埋められます。
-  - **Alphaチャンネル (任意)**: Alpha用のテクスチャが指定された場合、その Red チャンネルを使用します。空の場合は、Alphaチャンネルはデフォルトで白（255 / 不透明）に設定されます。
+  - **Alphaチャンネル (任意)**: Alpha用のテクスチャが指定された場合、そのテクスチャの選択したチャンネルを使用します。空の場合は、Alphaチャンネルはデフォルトで白（255 / 不透明）に設定されます。
 - **反転トグル (Invert Toggle)**: 各チャンネルスロットに Invert チェックボックスを搭載。有効にするとチャンネル値が反転（`255 - Value`）され、別途テクスチャを用意せずに Roughness から Smoothness への変換などが可能です。
 - **プリセット管理**: チャンネルパッキングの構成をプリセットとして保存・読み込み・共有できるドロップダウンを搭載。組み込みプリセットとして ORM と MRA を用意。ユーザー作成のプリセットは `Saved/TextureChannelPacker/Presets/` に JSON ファイルとして保存され、チーム内での設定共有が容易です。
 - **拡張フォーマットサポート**:
