@@ -1336,7 +1336,7 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
         const uint16* GrayData16 = (const uint16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            uint8 Val = (uint8)(GrayData16[i] >> 8);
+            uint8 Val = (uint8)(((uint32)GrayData16[i] * 255 + 32767) / 65535);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
         break;
@@ -1347,7 +1347,7 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
         const FFloat16* Pixel16 = (const FFloat16*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
+            uint8 Val = (uint8)(FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f) + 0.5f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
         break;
@@ -1358,7 +1358,7 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
         const float* Pixel32 = (const float*)SrcData;
         for (int32 i = 0; i < NumPixels; ++i)
         {
-            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
+            uint8 Val = (uint8)(FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f) + 0.5f);
             SrcColors[i] = FColor(Val, Val, Val, 255);
         }
         break;
@@ -1370,10 +1370,10 @@ static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, in
         for (int32 i = 0; i < NumPixels; ++i)
         {
             const FLinearColor& LC = LinearColors[i];
-            uint8 R = (uint8)FMath::Clamp<float>(LC.R * 255.0f, 0.0f, 255.0f);
-            uint8 G = (uint8)FMath::Clamp<float>(LC.G * 255.0f, 0.0f, 255.0f);
-            uint8 B = (uint8)FMath::Clamp<float>(LC.B * 255.0f, 0.0f, 255.0f);
-            uint8 A = (uint8)FMath::Clamp<float>(LC.A * 255.0f, 0.0f, 255.0f);
+            uint8 R = (uint8)(FMath::Clamp<float>(LC.R * 255.0f, 0.0f, 255.0f) + 0.5f);
+            uint8 G = (uint8)(FMath::Clamp<float>(LC.G * 255.0f, 0.0f, 255.0f) + 0.5f);
+            uint8 B = (uint8)(FMath::Clamp<float>(LC.B * 255.0f, 0.0f, 255.0f) + 0.5f);
+            uint8 A = (uint8)(FMath::Clamp<float>(LC.A * 255.0f, 0.0f, 255.0f) + 0.5f);
             SrcColors[i] = FColor(R, G, B, A);
         }
         break;
