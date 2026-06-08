@@ -1274,20 +1274,39 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
             return Result;  // Return invalid result
         }
 
-        int32 TotalBytes = Result.Width * Result.Height * BytesPerPixel;
+        // Compute the byte count in 64-bit to avoid int32 overflow. A 16K RGBA32F texture
+        // is 16384*16384*16 = 4 GB, which silently wraps to a small/negative value in int32
+        // (e.g. exactly 0), producing a confusing "invalid total bytes" failure. TArray is
+        // int32-indexed, so anything larger than INT32_MAX cannot be held regardless.
+        const int64 TotalBytes = (int64)Result.Width * (int64)Result.Height * (int64)BytesPerPixel;
 
         // Validation 2: Check if TotalBytes is valid
         if (TotalBytes <= 0)
         {
             UE_LOG(LogTexturePacker, Error,
-                TEXT("Invalid total bytes (%d) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
+                TEXT("Invalid total bytes (%lld) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
                 TotalBytes, *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
             SourceTex->Source.UnlockMip(0);
             return Result;  // Return invalid result
         }
 
+        // Validation 3: Reject textures too large for a 32-bit-indexed TArray.
+        if (TotalBytes > (int64)MAX_int32)
+        {
+            UE_LOG(LogTexturePacker, Error,
+                TEXT("Texture too large to process: %s (Width: %d, Height: %d, BPP: %d, Bytes: %lld)"),
+                *Result.TextureName, Result.Width, Result.Height, BytesPerPixel, TotalBytes);
+            SourceTex->Source.UnlockMip(0);
+            Result.ErrorMessage = GetLocalizedMessage(
+                TEXT("ErrorTextureTooLarge"),
+                TEXT("Input texture is too large to process. Reduce its resolution or use a format with fewer bytes per pixel (e.g. 8-bit instead of 32-bit float)."),
+                TEXT("入力テクスチャが大きすぎて処理できません。解像度を下げるか、ピクセルあたりのバイト数が少ない形式（32bit float ではなく 8bit など）を使用してください。")
+            );
+            return Result;  // Return invalid result
+        }
+
         // Data is valid, proceed with copy
-        Result.RawData.SetNumUninitialized(TotalBytes);
+        Result.RawData.SetNumUninitialized((int32)TotalBytes);
         FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
         Result.bIsValid = true;
     }

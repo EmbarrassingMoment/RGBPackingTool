@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Alpha is shown as fully opaque so data packed into the Alpha channel does not blend the RGB composite against the panel background.
   - The preview is shown linear (sRGB off), matching the color space of the generated asset.
 
+### Fixed
+- **Large Texture Overflow**: Source data extraction computed the byte count with 32-bit math (`Width * Height * BytesPerPixel`), which overflowed for very large inputs (e.g. a 16K RGBA32F texture is 4 GB) and failed with a misleading "invalid total bytes" error. The byte count is now computed in 64-bit, and textures larger than a 32-bit-indexed buffer can hold are rejected with a clear message.
+
 ## [1.6.0] - 2026-05-07
 
 ### Added
