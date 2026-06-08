@@ -5,10 +5,12 @@
 #include "Input/Reply.h"
 #include "Engine/Texture.h"
 #include "Dom/JsonObject.h"
+#include "UObject/StrongObjectPtr.h"
 
 class SDockTab;
 class FSpawnTabArgs;
 class UTexture2D;
+struct FSlateBrush;
 template <typename OptionType> class SComboBox;
 
 /**
@@ -316,4 +318,29 @@ private:
 
     /** Switches to "Custom" preset if current settings differ from the active preset. */
     void MarkCustomIfChanged();
+
+    // ========== Preview ==========
+
+    /**
+     * @brief Rebuilds the live preview thumbnail from the current inputs and settings.
+     *
+     * Runs the same extract/process pipeline as generation, but at a small capped resolution
+     * (so it stays cheap even for 16K targets) and writes the result into a transient texture
+     * displayed in the tool UI. The RGB channels are composited; Alpha is forced opaque so the
+     * preview is not blended against the background. Must be called on the Game Thread.
+     */
+    void UpdatePreview();
+
+    /** Transient texture backing the preview image. Kept alive via TStrongObjectPtr. */
+    TStrongObjectPtr<UTexture2D> PreviewTexture;
+
+    /** Slate brush that points at PreviewTexture for display in an SImage. */
+    TSharedPtr<FSlateBrush> PreviewBrush;
+
+    /** Display dimensions (in Slate units) of the current preview. */
+    int32 PreviewDisplayWidth = 0;
+    int32 PreviewDisplayHeight = 0;
+
+    /** True once a preview has been generated at least once. */
+    bool bPreviewValid = false;
 };

@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-06-08
+
+### Added
+- **Live Preview**: Added a Preview panel to the tool. Click **Update Preview** to build a low-resolution composite of the packed RGB result using the current inputs, invert flags, and source-channel selections — without generating an asset. This shortens the generate → inspect → adjust loop.
+  - The preview is rendered at a small capped resolution (max 256 px on the longest side) following the target aspect ratio, so it stays fast even for 16K output targets.
+  - Alpha is shown as fully opaque so data packed into the Alpha channel does not blend the RGB composite against the panel background.
+  - The preview is shown linear (sRGB off), matching the color space of the generated asset.
+
 ## [1.6.0] - 2026-05-07
 
 ### Added
