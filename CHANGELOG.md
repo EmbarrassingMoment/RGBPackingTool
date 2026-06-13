@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Live Preview**: Added a Preview panel to the tool. Click **Update Preview** to build a low-resolution composite of the packed RGB result using the current inputs, invert flags, and source-channel selections — without generating an asset. This shortens the generate → inspect → adjust loop.
   - The preview is rendered at a small capped resolution (max 256 px on the longest side) following the target aspect ratio, so it stays fast even for 16K output targets.
   - Alpha is shown as fully opaque so data packed into the Alpha channel does not blend the RGB composite against the panel background.
+  - **View modes**: A **View** dropdown at the top of the preview switches between the RGB composite and any single channel (R/G/B/A) shown as grayscale, so data packed into Green/Blue/Alpha can be inspected individually. Switching is instant and does not re-read the source textures.
   - The preview is shown linear (sRGB off), matching the color space of the generated asset.
 
 ### Fixed
