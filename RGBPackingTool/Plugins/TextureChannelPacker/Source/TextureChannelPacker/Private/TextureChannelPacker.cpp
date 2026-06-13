@@ -15,7 +15,12 @@
 #include "Logging/LogMacros.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Engine/Texture2D.h"
+// FTexturePlatformData lives in a dedicated header on newer engine versions but is
+// declared inside Engine/Texture.h (pulled in via Engine/Texture2D.h above) on older
+// ones. Guard the include so the build succeeds regardless of where it resides.
+#if __has_include("Engine/TexturePlatformData.h")
 #include "Engine/TexturePlatformData.h"
+#endif
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "Misc/MessageDialog.h"
