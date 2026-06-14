@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.6.0-green?style=for-the-badge)](CHANGELOG.ja.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.7.0-green?style=for-the-badge)](CHANGELOG.ja.md)
 
 **TextureChannelPacker** は、個別のグレースケールテクスチャを1枚の出力テクスチャの R (赤)、G (緑)、B (青)、A (アルファ) チャンネルに効率的にパッキングするための Unreal Engine 5.7 用プラグインです。ORM（オクルージョン、ラフネス、メタリック）マップや、その他のチャンネルパッキングテクスチャを作成する際によく使用されます。
 
@@ -30,6 +30,7 @@
   - `sRGB = false` (リニアカラー) で `UTexture2D` アセットを生成します。
 - **高速化**:
   - **並列処理 (Parallel Processing)**: マルチスレッド処理 (`ParallelFor`) を活用し、テクスチャのリサイズや変換を高速に行います。
+- **結果プレビュー (Live Preview)**: アセットを生成する前に、パック後の合成結果を低解像度で表示するプレビューパネルを搭載しています。**プレビュー更新** ボタンを押すと、現在の入力・反転フラグ・入力チャンネル選択が反映されます。**表示** ドロップダウンで RGB 合成と各単一チャンネル (R/G/B/A) のグレースケール表示を切り替えられるため、緑・青・アルファに格納したデータも個別に確認できます (切り替えは即時で、テクスチャの再読み込みは行いません)。プレビューは小さな解像度に制限されるため 16K ターゲットでも高速で、生成アセットと同じリニア (sRGB オフ) で表示されます。
 - **ユーザーインターフェース**:
   - **UIローカライズ**: エディタの言語設定に合わせて、UIや通知が自動的に日本語/英語に切り替わります。
   - **キャンセル可能な進捗**: テクスチャ生成中に進行状況ダイアログが表示され、処理をキャンセルすることが可能です。

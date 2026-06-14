@@ -15,6 +15,12 @@
 #include "Logging/LogMacros.h"
 #include "PropertyCustomizationHelpers.h"
 #include "Engine/Texture2D.h"
+// FTexturePlatformData lives in a dedicated header on newer engine versions but is
+// declared inside Engine/Texture.h (pulled in via Engine/Texture2D.h above) on older
+// ones. Guard the include so the build succeeds regardless of where it resides.
+#if __has_include("Engine/TexturePlatformData.h")
+#include "Engine/TexturePlatformData.h"
+#endif
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "Misc/MessageDialog.h"
@@ -37,6 +43,7 @@
 #include "HAL/PlatformFileManager.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Styling/SlateBrush.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
@@ -102,6 +109,20 @@ static ESourceChannel SourceChannelFromId(const FString& Id)
     if (Id == TEXT("B")) return ESourceChannel::Blue;
     if (Id == TEXT("A")) return ESourceChannel::Alpha;
     return ESourceChannel::Red;
+}
+
+/** Short label for the preview view-mode dropdown. */
+static FString PreviewModeToShortString(EPreviewMode Mode)
+{
+    switch (Mode)
+    {
+    case EPreviewMode::RGB:   return TEXT("RGB");
+    case EPreviewMode::Red:   return TEXT("R");
+    case EPreviewMode::Green: return TEXT("G");
+    case EPreviewMode::Blue:  return TEXT("B");
+    case EPreviewMode::Alpha: return TEXT("A");
+    }
+    return TEXT("RGB");
 }
 
 // ========== FChannelPackerPreset Implementation ==========
@@ -287,6 +308,13 @@ void FTextureChannelPackerModule::StartupModule()
     SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Blue));
     SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Alpha));
 
+    // Initialize preview view-mode options (RGB composite + isolated channels)
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::RGB));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Red));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Green));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Blue));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Alpha));
+
     // Initialize Built-in Presets
     InitializeBuiltInPresets();
     LoadPresetsFromDisk();
@@ -335,6 +363,14 @@ void FTextureChannelPackerModule::ShutdownModule()
     // we call this function before unloading the module.
     UToolMenus::UnregisterOwner(this);
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
+
+    // Release preview resources.
+    if (PreviewBrush.IsValid())
+    {
+        PreviewBrush->SetResourceObject(nullptr);
+    }
+    PreviewBrush.Reset();
+    PreviewTexture.Reset();
 }
 
 TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, ESourceChannel& SourceChannelRef, const FText& TooltipText)
@@ -711,6 +747,146 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             TEXT("空の場合は白 (255) で塗りつぶされ、不透明になります。独自のアルファマスクを使用する場合はテクスチャを指定してください。")
                         )
                     )
+                ]
+
+                // Separator
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
+                [
+                    SNew(SSeparator)
+                ]
+
+                // Preview Section
+                + SScrollBox::Slot()
+                .Padding(10.0f, 5.0f)
+                [
+                    SNew(SVerticalBox)
+                    // Header row: label + view-mode dropdown + Update button
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 6.0f)
+                    [
+                        SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                            .Text(GetLocalizedMessage(TEXT("PreviewLabel"), TEXT("Preview"), TEXT("プレビュー")))
+                            .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+                        ]
+                        // View-mode label
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                            .Text(GetLocalizedMessage(TEXT("PreviewViewLabel"), TEXT("View"), TEXT("表示")))
+                            .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                        ]
+                        // View-mode dropdown (RGB / R / G / B / A)
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+                        [
+                            SNew(SComboBox<TSharedPtr<EPreviewMode>>)
+                            .ToolTipText(GetLocalizedMessage(
+                                TEXT("PreviewViewTooltip"),
+                                TEXT("Choose what the preview shows: the RGB composite, or a single channel (R/G/B/A) as grayscale. Switching is instant and does not re-read the textures."),
+                                TEXT("プレビューの表示内容を選択します: RGB合成、または単一チャンネル(R/G/B/A)のグレースケール表示。切り替えは即時で、テクスチャの再読み込みは行いません。")
+                            ))
+                            .OptionsSource(&PreviewModeOptions)
+                            .OnSelectionChanged_Lambda([this](TSharedPtr<EPreviewMode> NewSelection, ESelectInfo::Type SelectInfo)
+                            {
+                                if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                                {
+                                    PreviewMode = *NewSelection;
+                                    if (bPreviewValid)
+                                    {
+                                        RebuildPreviewTexture();
+                                    }
+                                }
+                            })
+                            .OnGenerateWidget_Lambda([](TSharedPtr<EPreviewMode> Item)
+                            {
+                                return SNew(STextBlock).Text(FText::FromString(PreviewModeToShortString(*Item)));
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Text_Lambda([this]()
+                                {
+                                    return FText::FromString(PreviewModeToShortString(PreviewMode));
+                                })
+                            ]
+                        ]
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        [
+                            SNew(SButton)
+                            .Text(GetLocalizedMessage(TEXT("UpdatePreviewButton"), TEXT("Update Preview"), TEXT("プレビュー更新")))
+                            .ToolTipText(GetLocalizedMessage(
+                                TEXT("UpdatePreviewTooltip"),
+                                TEXT("Build a low-resolution preview of the packed result using the current inputs and settings. Use the View dropdown to inspect individual channels."),
+                                TEXT("現在の入力と設定でパック結果の低解像度プレビューを生成します。「表示」ドロップダウンで各チャンネルを個別に確認できます。")
+                            ))
+                            .OnClicked_Lambda([this]()
+                            {
+                                UpdatePreview();
+                                return FReply::Handled();
+                            })
+                        ]
+                    ]
+                    // Preview image (visible once generated)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .HAlign(HAlign_Center)
+                    [
+                        SNew(SBox)
+                        .Visibility_Lambda([this]()
+                        {
+                            return bPreviewValid ? EVisibility::Visible : EVisibility::Collapsed;
+                        })
+                        .WidthOverride_Lambda([this]() -> FOptionalSize
+                        {
+                            return FOptionalSize((float)PreviewDisplayWidth);
+                        })
+                        .HeightOverride_Lambda([this]() -> FOptionalSize
+                        {
+                            return FOptionalSize((float)PreviewDisplayHeight);
+                        })
+                        [
+                            SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+                            .Padding(0.0f)
+                            [
+                                SNew(SImage)
+                                .Image_Lambda([this]() -> const FSlateBrush*
+                                {
+                                    return PreviewBrush.IsValid() ? PreviewBrush.Get() : nullptr;
+                                })
+                            ]
+                        ]
+                    ]
+                    // Hint text (visible before first preview)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .HAlign(HAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Visibility_Lambda([this]()
+                        {
+                            return bPreviewValid ? EVisibility::Collapsed : EVisibility::Visible;
+                        })
+                        .Text(GetLocalizedMessage(
+                            TEXT("PreviewHint"),
+                            TEXT("Click \"Update Preview\" to see the packed result."),
+                            TEXT("「プレビュー更新」を押すとパック結果を表示します。")
+                        ))
+                        .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+                        .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                    ]
                 ]
 
                 // Separator
@@ -1170,20 +1346,39 @@ static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
             return Result;  // Return invalid result
         }
 
-        int32 TotalBytes = Result.Width * Result.Height * BytesPerPixel;
+        // Compute the byte count in 64-bit to avoid int32 overflow. A 16K RGBA32F texture
+        // is 16384*16384*16 = 4 GB, which silently wraps to a small/negative value in int32
+        // (e.g. exactly 0), producing a confusing "invalid total bytes" failure. TArray is
+        // int32-indexed, so anything larger than INT32_MAX cannot be held regardless.
+        const int64 TotalBytes = (int64)Result.Width * (int64)Result.Height * (int64)BytesPerPixel;
 
         // Validation 2: Check if TotalBytes is valid
         if (TotalBytes <= 0)
         {
             UE_LOG(LogTexturePacker, Error,
-                TEXT("Invalid total bytes (%d) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
+                TEXT("Invalid total bytes (%lld) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
                 TotalBytes, *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
             SourceTex->Source.UnlockMip(0);
             return Result;  // Return invalid result
         }
 
+        // Validation 3: Reject textures too large for a 32-bit-indexed TArray.
+        if (TotalBytes > (int64)MAX_int32)
+        {
+            UE_LOG(LogTexturePacker, Error,
+                TEXT("Texture too large to process: %s (Width: %d, Height: %d, BPP: %d, Bytes: %lld)"),
+                *Result.TextureName, Result.Width, Result.Height, BytesPerPixel, TotalBytes);
+            SourceTex->Source.UnlockMip(0);
+            Result.ErrorMessage = GetLocalizedMessage(
+                TEXT("ErrorTextureTooLarge"),
+                TEXT("Input texture is too large to process. Reduce its resolution or use a format with fewer bytes per pixel (e.g. 8-bit instead of 32-bit float)."),
+                TEXT("入力テクスチャが大きすぎて処理できません。解像度を下げるか、ピクセルあたりのバイト数が少ない形式（32bit float ではなく 8bit など）を使用してください。")
+            );
+            return Result;  // Return invalid result
+        }
+
         // Data is valid, proceed with copy
-        Result.RawData.SetNumUninitialized(TotalBytes);
+        Result.RawData.SetNumUninitialized((int32)TotalBytes);
         FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
         Result.bIsValid = true;
     }
@@ -1701,6 +1896,148 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
     ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
+}
+
+void FTextureChannelPackerModule::UpdatePreview()
+{
+    check(IsInGameThread());
+
+    // Derive a small preview resolution from the target aspect ratio so the preview stays
+    // cheap to build even when the output target is very large (e.g. 16K).
+    const int32 PreviewMaxDim = 256;
+    const int32 SrcW = FMath::Clamp(TargetWidth, 1, MaxTextureDimension);
+    const int32 SrcH = FMath::Clamp(TargetHeight, 1, MaxTextureDimension);
+    const float Scale = FMath::Min(1.0f, (float)PreviewMaxDim / (float)FMath::Max(SrcW, SrcH));
+    const int32 W = FMath::Max(1, FMath::RoundToInt(SrcW * Scale));
+    const int32 H = FMath::Max(1, FMath::RoundToInt(SrcH * Scale));
+    const int32 NumPixels = W * H;
+
+    // Extract source data on the Game Thread, then process channels in parallel.
+    FTextureRawData RawInputs[4];
+    RawInputs[0] = ExtractTextureSourceData(InputTextureR.Get());
+    RawInputs[1] = ExtractTextureSourceData(InputTextureG.Get());
+    RawInputs[2] = ExtractTextureSourceData(InputTextureB.Get());
+    RawInputs[3] = ExtractTextureSourceData(InputTextureA.Get());
+
+    const ESourceChannel SourceChannels[4] = { SourceChannelR, SourceChannelG, SourceChannelB, SourceChannelA };
+    FTextureProcessResult Results[4];
+    ParallelFor(4, [&](int32 Index)
+    {
+        Results[Index] = ProcessTextureSourceData(RawInputs[Index], W, H, SourceChannels[Index]);
+    });
+
+    const bool bInvert[4] = { bInvertR, bInvertG, bInvertB, bInvertA };
+
+    // Default value for an empty/invalid channel: RGB default to black (0), Alpha to opaque
+    // (255), matching generation. Invert is applied afterwards, also matching generation.
+    const uint8 DefaultValues[4] = { 0, 0, 0, 255 };
+
+    // Resolve each channel into a W*H byte array and cache it. Caching the per-channel data
+    // lets the view mode switch instantly without re-reading the source textures.
+    for (int32 Index = 0; Index < 4; ++Index)
+    {
+        TArray<uint8>& Data = PreviewChannels[Index];
+        if (Results[Index].ProcessedData.Num() == NumPixels)
+        {
+            Data = MoveTemp(Results[Index].ProcessedData);
+        }
+        else
+        {
+            Data.Init(DefaultValues[Index], NumPixels);
+        }
+        if (bInvert[Index])
+        {
+            for (uint8& Value : Data)
+            {
+                Value = 255 - Value;
+            }
+        }
+    }
+
+    PreviewDisplayWidth = W;
+    PreviewDisplayHeight = H;
+    bPreviewValid = true;
+
+    RebuildPreviewTexture();
+}
+
+void FTextureChannelPackerModule::RebuildPreviewTexture()
+{
+    check(IsInGameThread());
+
+    if (!bPreviewValid)
+    {
+        return;
+    }
+
+    const int32 W = PreviewDisplayWidth;
+    const int32 H = PreviewDisplayHeight;
+    const int32 NumPixels = W * H;
+    if (NumPixels <= 0 || PreviewChannels[0].Num() != NumPixels)
+    {
+        return;
+    }
+
+    const TArray<uint8>& R = PreviewChannels[0];
+    const TArray<uint8>& G = PreviewChannels[1];
+    const TArray<uint8>& B = PreviewChannels[2];
+    const TArray<uint8>& A = PreviewChannels[3];
+
+    // Compose the BGRA buffer for the selected view mode. Single-channel modes show that
+    // channel as grayscale (B=G=R); RGB shows the composite. The displayed alpha is always
+    // forced opaque so the preview is never blended against the panel background.
+    TArray<uint8> BGRA;
+    BGRA.SetNumUninitialized(NumPixels * 4);
+    for (int32 i = 0; i < NumPixels; ++i)
+    {
+        uint8 OutB, OutG, OutR;
+        switch (PreviewMode)
+        {
+        case EPreviewMode::Red:   OutB = OutG = OutR = R[i]; break;
+        case EPreviewMode::Green: OutB = OutG = OutR = G[i]; break;
+        case EPreviewMode::Blue:  OutB = OutG = OutR = B[i]; break;
+        case EPreviewMode::Alpha: OutB = OutG = OutR = A[i]; break;
+        case EPreviewMode::RGB:
+        default:                  OutB = B[i]; OutG = G[i]; OutR = R[i]; break;
+        }
+
+        const int32 Offset = i * 4;
+        BGRA[Offset + 0] = OutB;
+        BGRA[Offset + 1] = OutG;
+        BGRA[Offset + 2] = OutR;
+        BGRA[Offset + 3] = 255;
+    }
+
+    // Build a transient texture for display. PF_B8G8R8A8 matches our BGRA byte order.
+    UTexture2D* NewPreview = UTexture2D::CreateTransient(W, H, PF_B8G8R8A8);
+    if (!NewPreview)
+    {
+        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to create transient preview texture."));
+        return;
+    }
+
+    // Show the literal packed values (linear), matching the generated asset's color space.
+    NewPreview->SRGB = false;
+    NewPreview->Filter = TF_Nearest;
+
+    if (FTexturePlatformData* PlatformData = NewPreview->GetPlatformData())
+    {
+        void* MipData = PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
+        FMemory::Memcpy(MipData, BGRA.GetData(), BGRA.Num());
+        PlatformData->Mips[0].BulkData.Unlock();
+    }
+    NewPreview->UpdateResource();
+
+    // Swap in the new texture (TStrongObjectPtr releases the previous one for GC).
+    PreviewTexture.Reset(NewPreview);
+
+    if (!PreviewBrush.IsValid())
+    {
+        PreviewBrush = MakeShared<FSlateBrush>();
+        PreviewBrush->DrawAs = ESlateBrushDrawType::Image;
+    }
+    PreviewBrush->SetResourceObject(PreviewTexture.Get());
+    PreviewBrush->ImageSize = FVector2D(W, H);
 }
 
 void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)

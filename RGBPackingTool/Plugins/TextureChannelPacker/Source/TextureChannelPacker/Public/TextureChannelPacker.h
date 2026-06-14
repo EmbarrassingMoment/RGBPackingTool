@@ -5,10 +5,12 @@
 #include "Input/Reply.h"
 #include "Engine/Texture.h"
 #include "Dom/JsonObject.h"
+#include "UObject/StrongObjectPtr.h"
 
 class SDockTab;
 class FSpawnTabArgs;
 class UTexture2D;
+struct FSlateBrush;
 template <typename OptionType> class SComboBox;
 
 /**
@@ -25,6 +27,24 @@ enum class ESourceChannel : uint8
     Green = 1,
     Blue = 2,
     Alpha = 3
+};
+
+/**
+ * @enum EPreviewMode
+ * @brief Selects which channel(s) the live preview visualizes.
+ *
+ * RGB shows the composited color result; the single-channel modes show one channel as
+ * grayscale (R/G/B/A), the way an image editor isolates channels. This lets data packed
+ * into Green/Blue/Alpha be inspected individually. Regardless of mode, the displayed
+ * alpha is forced opaque so the preview is never blended against the panel background.
+ */
+enum class EPreviewMode : uint8
+{
+    RGB = 0,
+    Red = 1,
+    Green = 2,
+    Blue = 3,
+    Alpha = 4
 };
 
 /**
@@ -316,4 +336,52 @@ private:
 
     /** Switches to "Custom" preset if current settings differ from the active preset. */
     void MarkCustomIfChanged();
+
+    // ========== Preview ==========
+
+    /**
+     * @brief Re-reads the inputs and rebuilds the live preview from the current settings.
+     *
+     * Runs the same extract/process pipeline as generation, but at a small capped resolution
+     * (so it stays cheap even for 16K targets). The resolved per-channel data is cached so the
+     * view mode can be switched without re-reading the source textures, then the displayed
+     * texture is built via RebuildPreviewTexture(). Must be called on the Game Thread.
+     */
+    void UpdatePreview();
+
+    /**
+     * @brief Rebuilds the displayed preview texture from the cached channel data and current view mode.
+     *
+     * Composites the cached R/G/B/A channels according to PreviewMode (RGB composite, or a single
+     * channel as grayscale) into a transient texture. The displayed alpha is always forced opaque so
+     * the preview is never blended against the panel background. Must be called on the Game Thread,
+     * and only after UpdatePreview() has populated the cache (bPreviewValid).
+     */
+    void RebuildPreviewTexture();
+
+    /** Transient texture backing the preview image. Kept alive via TStrongObjectPtr. */
+    TStrongObjectPtr<UTexture2D> PreviewTexture;
+
+    /** Slate brush that points at PreviewTexture for display in an SImage. */
+    TSharedPtr<FSlateBrush> PreviewBrush;
+
+    /** Display dimensions (in Slate units) of the current preview. */
+    int32 PreviewDisplayWidth = 0;
+    int32 PreviewDisplayHeight = 0;
+
+    /** True once a preview has been generated at least once. */
+    bool bPreviewValid = false;
+
+    /** Current preview view mode (RGB composite or an isolated channel). */
+    EPreviewMode PreviewMode = EPreviewMode::RGB;
+
+    /** Option list backing the preview view-mode dropdown. */
+    TArray<TSharedPtr<EPreviewMode>> PreviewModeOptions;
+
+    /**
+     * Cached resolved channel data (R, G, B, A) at preview resolution, post-invert.
+     * Populated by UpdatePreview() so RebuildPreviewTexture() can switch view modes
+     * instantly without re-reading the source textures.
+     */
+    TArray<uint8> PreviewChannels[4];
 };
