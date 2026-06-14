@@ -31,7 +31,7 @@
   - Generates `UTexture2D` assets with `sRGB = false` (linear color).
 - **High Performance**:
   - Utilizes **Parallel Processing** (multi-threading) to significantly speed up texture resizing and conversion.
-- **Live Preview**: A Preview panel shows a low-resolution composite of the packed RGB result before you generate an asset. Click **Update Preview** to reflect the current inputs, invert flags, and source-channel selections. The preview is capped to a small resolution (so it stays fast even for 16K targets) and renders linear (sRGB off) to match the generated asset.
+- **Live Preview**: A Preview panel shows a low-resolution composite of the packed result before you generate an asset. Click **Update Preview** to reflect the current inputs, invert flags, and source-channel selections. A **View** dropdown switches between the RGB composite and any single channel (R/G/B/A) shown as grayscale, so data packed into Green/Blue/Alpha can be inspected individually (switching is instant and does not re-read the textures). The preview is capped to a small resolution (so it stays fast even for 16K targets) and renders linear (sRGB off) to match the generated asset.
 - **User Interface**:
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Cancellable Progress**: A progress dialog with a cancel button appears during generation, allowing you to abort long operations.
