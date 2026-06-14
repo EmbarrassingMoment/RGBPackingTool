@@ -111,6 +111,20 @@ static ESourceChannel SourceChannelFromId(const FString& Id)
     return ESourceChannel::Red;
 }
 
+/** Short label for the preview view-mode dropdown. */
+static FString PreviewModeToShortString(EPreviewMode Mode)
+{
+    switch (Mode)
+    {
+    case EPreviewMode::RGB:   return TEXT("RGB");
+    case EPreviewMode::Red:   return TEXT("R");
+    case EPreviewMode::Green: return TEXT("G");
+    case EPreviewMode::Blue:  return TEXT("B");
+    case EPreviewMode::Alpha: return TEXT("A");
+    }
+    return TEXT("RGB");
+}
+
 // ========== FChannelPackerPreset Implementation ==========
 
 FText FChannelPackerPreset::GetDisplayName() const
@@ -293,6 +307,13 @@ void FTextureChannelPackerModule::StartupModule()
     SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Green));
     SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Blue));
     SourceChannelOptions.Add(MakeShared<ESourceChannel>(ESourceChannel::Alpha));
+
+    // Initialize preview view-mode options (RGB composite + isolated channels)
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::RGB));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Red));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Green));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Blue));
+    PreviewModeOptions.Add(MakeShared<EPreviewMode>(EPreviewMode::Alpha));
 
     // Initialize Built-in Presets
     InitializeBuiltInPresets();
@@ -740,7 +761,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                 .Padding(10.0f, 5.0f)
                 [
                     SNew(SVerticalBox)
-                    // Header row: label + Update button
+                    // Header row: label + view-mode dropdown + Update button
                     + SVerticalBox::Slot()
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, 6.0f)
@@ -751,8 +772,54 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         .VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
-                            .Text(GetLocalizedMessage(TEXT("PreviewLabel"), TEXT("Preview (RGB)"), TEXT("プレビュー (RGB)")))
+                            .Text(GetLocalizedMessage(TEXT("PreviewLabel"), TEXT("Preview"), TEXT("プレビュー")))
                             .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+                        ]
+                        // View-mode label
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                            .Text(GetLocalizedMessage(TEXT("PreviewViewLabel"), TEXT("View"), TEXT("表示")))
+                            .Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+                        ]
+                        // View-mode dropdown (RGB / R / G / B / A)
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+                        [
+                            SNew(SComboBox<TSharedPtr<EPreviewMode>>)
+                            .ToolTipText(GetLocalizedMessage(
+                                TEXT("PreviewViewTooltip"),
+                                TEXT("Choose what the preview shows: the RGB composite, or a single channel (R/G/B/A) as grayscale. Switching is instant and does not re-read the textures."),
+                                TEXT("プレビューの表示内容を選択します: RGB合成、または単一チャンネル(R/G/B/A)のグレースケール表示。切り替えは即時で、テクスチャの再読み込みは行いません。")
+                            ))
+                            .OptionsSource(&PreviewModeOptions)
+                            .OnSelectionChanged_Lambda([this](TSharedPtr<EPreviewMode> NewSelection, ESelectInfo::Type SelectInfo)
+                            {
+                                if (NewSelection.IsValid() && SelectInfo != ESelectInfo::Direct)
+                                {
+                                    PreviewMode = *NewSelection;
+                                    if (bPreviewValid)
+                                    {
+                                        RebuildPreviewTexture();
+                                    }
+                                }
+                            })
+                            .OnGenerateWidget_Lambda([](TSharedPtr<EPreviewMode> Item)
+                            {
+                                return SNew(STextBlock).Text(FText::FromString(PreviewModeToShortString(*Item)));
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Text_Lambda([this]()
+                                {
+                                    return FText::FromString(PreviewModeToShortString(PreviewMode));
+                                })
+                            ]
                         ]
                         + SHorizontalBox::Slot()
                         .AutoWidth()
@@ -761,8 +828,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             .Text(GetLocalizedMessage(TEXT("UpdatePreviewButton"), TEXT("Update Preview"), TEXT("プレビュー更新")))
                             .ToolTipText(GetLocalizedMessage(
                                 TEXT("UpdatePreviewTooltip"),
-                                TEXT("Build a low-resolution preview of the packed RGB result using the current inputs and settings. Alpha is shown as fully opaque."),
-                                TEXT("現在の入力と設定でパックされたRGB結果の低解像度プレビューを生成します。アルファは不透明として表示されます。")
+                                TEXT("Build a low-resolution preview of the packed result using the current inputs and settings. Use the View dropdown to inspect individual channels."),
+                                TEXT("現在の入力と設定でパック結果の低解像度プレビューを生成します。「表示」ドロップダウンで各チャンネルを個別に確認できます。")
                             ))
                             .OnClicked_Lambda([this]()
                             {
@@ -1861,18 +1928,22 @@ void FTextureChannelPackerModule::UpdatePreview()
 
     const bool bInvert[4] = { bInvertR, bInvertG, bInvertB, bInvertA };
 
-    // Resolve a single channel into a W*H byte array, applying defaults and invert.
-    // Missing RGB channels default to black (0), matching generation behavior.
-    auto ResolveChannel = [&](int32 Index, uint8 DefaultValue) -> TArray<uint8>
+    // Default value for an empty/invalid channel: RGB default to black (0), Alpha to opaque
+    // (255), matching generation. Invert is applied afterwards, also matching generation.
+    const uint8 DefaultValues[4] = { 0, 0, 0, 255 };
+
+    // Resolve each channel into a W*H byte array and cache it. Caching the per-channel data
+    // lets the view mode switch instantly without re-reading the source textures.
+    for (int32 Index = 0; Index < 4; ++Index)
     {
-        TArray<uint8> Data;
+        TArray<uint8>& Data = PreviewChannels[Index];
         if (Results[Index].ProcessedData.Num() == NumPixels)
         {
             Data = MoveTemp(Results[Index].ProcessedData);
         }
         else
         {
-            Data.Init(DefaultValue, NumPixels);
+            Data.Init(DefaultValues[Index], NumPixels);
         }
         if (bInvert[Index])
         {
@@ -1881,23 +1952,59 @@ void FTextureChannelPackerModule::UpdatePreview()
                 Value = 255 - Value;
             }
         }
-        return Data;
-    };
+    }
 
-    const TArray<uint8> R = ResolveChannel(0, 0);
-    const TArray<uint8> G = ResolveChannel(1, 0);
-    const TArray<uint8> B = ResolveChannel(2, 0);
-    // Alpha is intentionally not visualized; the preview is forced opaque so data in the
-    // Alpha channel does not blend the RGB composite against the panel background.
+    PreviewDisplayWidth = W;
+    PreviewDisplayHeight = H;
+    bPreviewValid = true;
 
+    RebuildPreviewTexture();
+}
+
+void FTextureChannelPackerModule::RebuildPreviewTexture()
+{
+    check(IsInGameThread());
+
+    if (!bPreviewValid)
+    {
+        return;
+    }
+
+    const int32 W = PreviewDisplayWidth;
+    const int32 H = PreviewDisplayHeight;
+    const int32 NumPixels = W * H;
+    if (NumPixels <= 0 || PreviewChannels[0].Num() != NumPixels)
+    {
+        return;
+    }
+
+    const TArray<uint8>& R = PreviewChannels[0];
+    const TArray<uint8>& G = PreviewChannels[1];
+    const TArray<uint8>& B = PreviewChannels[2];
+    const TArray<uint8>& A = PreviewChannels[3];
+
+    // Compose the BGRA buffer for the selected view mode. Single-channel modes show that
+    // channel as grayscale (B=G=R); RGB shows the composite. The displayed alpha is always
+    // forced opaque so the preview is never blended against the panel background.
     TArray<uint8> BGRA;
     BGRA.SetNumUninitialized(NumPixels * 4);
     for (int32 i = 0; i < NumPixels; ++i)
     {
+        uint8 OutB, OutG, OutR;
+        switch (PreviewMode)
+        {
+        case EPreviewMode::Red:   OutB = OutG = OutR = R[i]; break;
+        case EPreviewMode::Green: OutB = OutG = OutR = G[i]; break;
+        case EPreviewMode::Blue:  OutB = OutG = OutR = B[i]; break;
+        case EPreviewMode::Alpha: OutB = OutG = OutR = A[i]; break;
+        case EPreviewMode::RGB:
+        default:                  OutB = B[i]; OutG = G[i]; OutR = R[i]; break;
+        }
+
         const int32 Offset = i * 4;
-        BGRA[Offset + 0] = B[i];
-        BGRA[Offset + 1] = G[i];
-        BGRA[Offset + 2] = R[i];
+        BGRA[Offset + 0] = OutB;
+        BGRA[Offset + 1] = OutG;
+        BGRA[Offset + 2] = OutR;
         BGRA[Offset + 3] = 255;
     }
 
@@ -1923,8 +2030,6 @@ void FTextureChannelPackerModule::UpdatePreview()
 
     // Swap in the new texture (TStrongObjectPtr releases the previous one for GC).
     PreviewTexture.Reset(NewPreview);
-    PreviewDisplayWidth = W;
-    PreviewDisplayHeight = H;
 
     if (!PreviewBrush.IsValid())
     {
@@ -1933,8 +2038,6 @@ void FTextureChannelPackerModule::UpdatePreview()
     }
     PreviewBrush->SetResourceObject(PreviewTexture.Get());
     PreviewBrush->ImageSize = FVector2D(W, H);
-
-    bPreviewValid = true;
 }
 
 void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)
