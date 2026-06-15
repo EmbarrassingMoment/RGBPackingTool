@@ -16,11 +16,22 @@
 ### Step 1: Open the Tool
 Go to **Tools > Texture Channel Packer**.
 
-### Step 2: Drag & Drop Inputs
+### Step 2: Pick a Preset (Optional)
+Choose a **Preset** from the dropdown at the top to set channel labels, filename suffix, compression, and invert defaults in one click.
+*   **ORM** (default): R = Ambient Occlusion, G = Roughness, B = Metallic — suffix `_ORM`.
+*   **MRA**: R = Metallic, G = Roughness, B = Ambient Occlusion — suffix `_MRA`.
+*   Use **Save As...** to store your own layout as a reusable preset (shared with your team via JSON files in `Saved/TextureChannelPacker/Presets/`).
+
+### Step 3: Drag & Drop Inputs
 Drag your textures directly from the Content Browser into the slots.
 *   *Tip:* Standard ORM layout is **Red** = Ambient Occlusion, **Green** = Roughness, **Blue** = Metallic.
+*   *Source Channel:* Each slot has an **R/G/B/A** dropdown to choose which channel to read from the input — handy for sourcing from a color or already-packed texture without splitting it first.
 
-### Step 3: Verify & Generate
+### Step 4: Preview (Optional)
+Click **Update Preview** to see a low-resolution composite of the packed result before generating an asset.
+*   Use the **View** dropdown to inspect the RGB composite or any single channel (R/G/B/A) as grayscale.
+
+### Step 5: Verify & Generate
 1.  Notice that the **Output File Name** is automatically generated (Smart Naming).
 2.  Set the **Width** and **Height** for your output resolution (they can differ for non-square textures).
     > **Note:** Resolutions above 8192px will show a memory warning dialog before processing.
@@ -32,5 +43,8 @@ Drag your textures directly from the Content Browser into the slots.
 *   Empty R, G, B slots are automatically filled with **Black (0)**. Alpha defaults to **White (255)**.
 *   No need to resize textures beforehand; the tool handles it automatically.
 *   For ORM maps, leave the Compression setting on `Masks`.
+*   Use a **Preset** to reuse channel layouts across your team, or **Save As...** to create your own.
+*   Use the **Source Channel** dropdown to pull data straight from a packed/color texture — no need to split channels first.
+*   Hit **Update Preview** to check the result (and inspect single channels) before committing to a full generate.
 *   Use the **Invert** checkbox to flip values per-channel — no need to edit source textures.
 *   Width and Height can be set independently for non-square output textures.
