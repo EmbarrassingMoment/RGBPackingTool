@@ -51,6 +51,7 @@ This class manages the UI state, holds references to input textures, and execute
 *   **`OnGenerateClicked`**: Validates user inputs (e.g., ensuring at least one texture is selected and resolution is valid) before triggering generation.
 *   **`CreateTexture`**: The main driver for the texture generation process.
 *   **`AutoGenerateFileName`**: heuristic logic to determine a suitable output filename based on the Longest Common Prefix of inputs.
+*   **`SaveUISettings` / `LoadUISettings`**: Persist and restore the last-used UI settings (output path, resolution, preset, compression, invert flags, source channels) via `GConfig` in the `[TextureChannelPacker]` section of `EditorPerProjectUserSettings.ini`. Saving happens whenever a setting is committed; loading happens in `StartupModule` after presets are initialized.
 
 ### Data Structures
 

@@ -337,6 +337,26 @@ private:
     /** Switches to "Custom" preset if current settings differ from the active preset. */
     void MarkCustomIfChanged();
 
+    // ========== UI Settings Persistence ==========
+
+    /**
+     * @brief Saves the current UI settings to EditorPerProjectUserSettings.ini.
+     *
+     * Persists the output path, resolution, active preset name, compression option,
+     * invert flags, and source channel selections so they survive editor restarts.
+     * Called whenever the user commits a change to one of those settings.
+     */
+    void SaveUISettings() const;
+
+    /**
+     * @brief Restores the UI settings previously saved by SaveUISettings().
+     *
+     * Re-selects the saved preset by name (if it still exists), then overlays the
+     * individually saved values on top so a session that ended on "Custom" settings
+     * is restored exactly. Must be called after presets have been initialized.
+     */
+    void LoadUISettings();
+
     // ========== Preview ==========
 
     /**

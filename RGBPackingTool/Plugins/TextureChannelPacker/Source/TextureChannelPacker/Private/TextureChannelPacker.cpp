@@ -40,6 +40,7 @@
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
 #include "Misc/FileHelper.h"
+#include "Misc/ConfigCacheIni.h"
 #include "HAL/PlatformFileManager.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -53,6 +54,9 @@ static const FName TextureChannelPackerTabName("TextureChannelPacker");
 
 static constexpr int32 LargeTextureWarningThreshold = 8192;
 static constexpr int32 MaxTextureDimension = 16384;
+
+/** Config section in EditorPerProjectUserSettings.ini holding the last-used UI settings. */
+static const TCHAR* UISettingsSection = TEXT("TextureChannelPacker");
 
 /**
  * @brief Retrieves a localized message based on the current culture.
@@ -326,6 +330,10 @@ void FTextureChannelPackerModule::StartupModule()
         CurrentFileNameSuffix = CurrentPreset->FileNameSuffix;
     }
 
+    // Restore the last-used settings (output path, resolution, preset, etc.) from the
+    // previous editor session. Must run after presets are available.
+    LoadUISettings();
+
     // Register Nomad Tab
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TextureChannelPackerTabName, FOnSpawnTab::CreateRaw(this, &FTextureChannelPackerModule::OnSpawnPluginTab))
         .SetDisplayName(LOCTEXT("TextureChannelPackerTabTitle", "Texture Channel Packer"))
@@ -434,6 +442,7 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TA
                     {
                         *SourceChannelPtr = *NewSelection;
                         MarkCustomIfChanged();
+                        SaveUISettings();
                     }
                 })
                 .OnGenerateWidget_Lambda([](TSharedPtr<ESourceChannel> Item)
@@ -462,6 +471,7 @@ TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TA
                 {
                     *InvertPtr = (NewState == ECheckBoxState::Checked);
                     MarkCustomIfChanged();
+                    SaveUISettings();
                 })
             ]
             // "Invert" Label
@@ -514,6 +524,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         PathPickerConfig.OnPathSelected = FOnPathSelected::CreateLambda([this, WeakComboButton](const FString& NewPath)
         {
             OutputPackagePath = NewPath;
+            SaveUISettings();
             if (TSharedPtr<SComboButton> StrongComboButton = WeakComboButton.Pin())
             {
                 StrongComboButton->SetIsOpen(false);
@@ -930,6 +941,11 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             SNew(SNumericEntryBox<int32>)
                             .Value_Lambda([this] { return TargetWidth; })
                             .OnValueChanged_Lambda([this](int32 NewValue) { TargetWidth = NewValue; })
+                            .OnValueCommitted_Lambda([this](int32 NewValue, ETextCommit::Type)
+                            {
+                                TargetWidth = NewValue;
+                                SaveUISettings();
+                            })
                             .AllowSpin(true)
                             .MinValue(1)
                             .MaxValue(MaxTextureDimension)
@@ -953,6 +969,11 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             SNew(SNumericEntryBox<int32>)
                             .Value_Lambda([this] { return TargetHeight; })
                             .OnValueChanged_Lambda([this](int32 NewValue) { TargetHeight = NewValue; })
+                            .OnValueCommitted_Lambda([this](int32 NewValue, ETextCommit::Type)
+                            {
+                                TargetHeight = NewValue;
+                                SaveUISettings();
+                            })
                             .AllowSpin(true)
                             .MinValue(1)
                             .MaxValue(MaxTextureDimension)
@@ -991,6 +1012,7 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                             {
                                 CurrentCompressionOption = NewSelection;
                                 MarkCustomIfChanged();
+                                SaveUISettings();
                             }
                         })
                         .OnGenerateWidget_Lambda([](TSharedPtr<FCompressionOption> Item)
@@ -1030,7 +1052,11 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                         [
                             SNew(SEditableTextBox)
                             .Text_Lambda([this] { return FText::FromString(OutputPackagePath); })
-                            .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type) { OutputPackagePath = NewText.ToString(); })
+                            .OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
+                            {
+                                OutputPackagePath = NewText.ToString();
+                                SaveUISettings();
+                            })
                         ]
                         + SHorizontalBox::Slot()
                         .AutoWidth()
@@ -2217,6 +2243,8 @@ void FTextureChannelPackerModule::ApplyPreset(TSharedPtr<FChannelPackerPreset> P
     {
         PresetComboBox->SetSelectedItem(Preset);
     }
+
+    SaveUISettings();
 }
 
 void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
@@ -2279,6 +2307,8 @@ void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
             PresetComboBox->SetSelectedItem(CurrentPreset);
         }
 
+        SaveUISettings();
+
         FText Msg = FText::Format(
             GetLocalizedMessage(TEXT("PresetSaved"), TEXT("Preset \"{0}\" saved."), TEXT("プリセット「{0}」を保存しました。")),
             FText::FromString(Name)
@@ -2317,6 +2347,8 @@ void FTextureChannelPackerModule::DeleteCurrentPreset()
         PresetComboBox->RefreshOptions();
         PresetComboBox->SetSelectedItem(CustomPreset);
     }
+
+    SaveUISettings();
 
     FText Msg = FText::Format(
         GetLocalizedMessage(TEXT("PresetDeleted"), TEXT("Preset \"{0}\" deleted."), TEXT("プリセット「{0}」を削除しました。")),
@@ -2365,6 +2397,110 @@ void FTextureChannelPackerModule::MarkCustomIfChanged()
             PresetComboBox->SetSelectedItem(CustomPreset);
         }
     }
+}
+
+void FTextureChannelPackerModule::SaveUISettings() const
+{
+    if (!GConfig)
+    {
+        return;
+    }
+
+    GConfig->SetString(UISettingsSection, TEXT("OutputPackagePath"), *OutputPackagePath, GEditorPerProjectIni);
+    GConfig->SetInt(UISettingsSection, TEXT("TargetWidth"), TargetWidth, GEditorPerProjectIni);
+    GConfig->SetInt(UISettingsSection, TEXT("TargetHeight"), TargetHeight, GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("PresetName"), CurrentPreset.IsValid() ? *CurrentPreset->PresetName : TEXT(""), GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("CompressionName"), CurrentCompressionOption.IsValid() ? *CurrentCompressionOption->InternalName : TEXT("Masks"), GEditorPerProjectIni);
+    GConfig->SetBool(UISettingsSection, TEXT("InvertR"), bInvertR, GEditorPerProjectIni);
+    GConfig->SetBool(UISettingsSection, TEXT("InvertG"), bInvertG, GEditorPerProjectIni);
+    GConfig->SetBool(UISettingsSection, TEXT("InvertB"), bInvertB, GEditorPerProjectIni);
+    GConfig->SetBool(UISettingsSection, TEXT("InvertA"), bInvertA, GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("SourceChannelR"), *SourceChannelToId(SourceChannelR), GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("SourceChannelG"), *SourceChannelToId(SourceChannelG), GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("SourceChannelB"), *SourceChannelToId(SourceChannelB), GEditorPerProjectIni);
+    GConfig->SetString(UISettingsSection, TEXT("SourceChannelA"), *SourceChannelToId(SourceChannelA), GEditorPerProjectIni);
+    GConfig->Flush(false, GEditorPerProjectIni);
+}
+
+void FTextureChannelPackerModule::LoadUISettings()
+{
+    if (!GConfig)
+    {
+        return;
+    }
+
+    // Read all stored values up front: ApplyPreset() below calls SaveUISettings(), which
+    // would otherwise overwrite the stored values before they are applied.
+    FString SavedPresetName, SavedPath, SavedCompression;
+    FString SavedSourceR, SavedSourceG, SavedSourceB, SavedSourceA;
+    int32 SavedWidth = 0, SavedHeight = 0;
+    bool bSavedInvertR = false, bSavedInvertG = false, bSavedInvertB = false, bSavedInvertA = false;
+
+    const bool bHasPresetName = GConfig->GetString(UISettingsSection, TEXT("PresetName"), SavedPresetName, GEditorPerProjectIni);
+    const bool bHasPath = GConfig->GetString(UISettingsSection, TEXT("OutputPackagePath"), SavedPath, GEditorPerProjectIni);
+    const bool bHasWidth = GConfig->GetInt(UISettingsSection, TEXT("TargetWidth"), SavedWidth, GEditorPerProjectIni);
+    const bool bHasHeight = GConfig->GetInt(UISettingsSection, TEXT("TargetHeight"), SavedHeight, GEditorPerProjectIni);
+    const bool bHasCompression = GConfig->GetString(UISettingsSection, TEXT("CompressionName"), SavedCompression, GEditorPerProjectIni);
+    const bool bHasInvertR = GConfig->GetBool(UISettingsSection, TEXT("InvertR"), bSavedInvertR, GEditorPerProjectIni);
+    const bool bHasInvertG = GConfig->GetBool(UISettingsSection, TEXT("InvertG"), bSavedInvertG, GEditorPerProjectIni);
+    const bool bHasInvertB = GConfig->GetBool(UISettingsSection, TEXT("InvertB"), bSavedInvertB, GEditorPerProjectIni);
+    const bool bHasInvertA = GConfig->GetBool(UISettingsSection, TEXT("InvertA"), bSavedInvertA, GEditorPerProjectIni);
+    const bool bHasSourceR = GConfig->GetString(UISettingsSection, TEXT("SourceChannelR"), SavedSourceR, GEditorPerProjectIni);
+    const bool bHasSourceG = GConfig->GetString(UISettingsSection, TEXT("SourceChannelG"), SavedSourceG, GEditorPerProjectIni);
+    const bool bHasSourceB = GConfig->GetString(UISettingsSection, TEXT("SourceChannelB"), SavedSourceB, GEditorPerProjectIni);
+    const bool bHasSourceA = GConfig->GetString(UISettingsSection, TEXT("SourceChannelA"), SavedSourceA, GEditorPerProjectIni);
+
+    // Re-select the saved preset by name. A deleted user preset simply won't be found,
+    // leaving the default (ORM) active.
+    if (bHasPresetName)
+    {
+        for (const TSharedPtr<FChannelPackerPreset>& Preset : Presets)
+        {
+            if (Preset->PresetName == SavedPresetName)
+            {
+                ApplyPreset(Preset);
+                break;
+            }
+        }
+    }
+
+    // Overlay the individually saved values on top of the preset defaults so a session
+    // that ended on "Custom" (or with tweaked flags) is restored exactly.
+    if (bHasPath && !SavedPath.IsEmpty())
+    {
+        OutputPackagePath = SavedPath;
+    }
+    if (bHasWidth)
+    {
+        TargetWidth = FMath::Clamp(SavedWidth, 1, MaxTextureDimension);
+    }
+    if (bHasHeight)
+    {
+        TargetHeight = FMath::Clamp(SavedHeight, 1, MaxTextureDimension);
+    }
+    if (bHasCompression)
+    {
+        for (const TSharedPtr<FCompressionOption>& Option : CompressionOptions)
+        {
+            if (Option->InternalName == SavedCompression)
+            {
+                CurrentCompressionOption = Option;
+                break;
+            }
+        }
+    }
+    if (bHasInvertR) bInvertR = bSavedInvertR;
+    if (bHasInvertG) bInvertG = bSavedInvertG;
+    if (bHasInvertB) bInvertB = bSavedInvertB;
+    if (bHasInvertA) bInvertA = bSavedInvertA;
+    if (bHasSourceR) SourceChannelR = SourceChannelFromId(SavedSourceR);
+    if (bHasSourceG) SourceChannelG = SourceChannelFromId(SavedSourceG);
+    if (bHasSourceB) SourceChannelB = SourceChannelFromId(SavedSourceB);
+    if (bHasSourceA) SourceChannelA = SourceChannelFromId(SavedSourceA);
+
+    // If the overlaid values no longer match the restored preset's defaults, reflect
+    // that as "Custom", the same way a live edit would.
+    MarkCustomIfChanged();
 }
 
 #undef LOCTEXT_NAMESPACE

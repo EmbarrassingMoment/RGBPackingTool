@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-20
+
+### Added
+- **Settings Persistence**: The tool now remembers the last-used settings across editor restarts. The output path, resolution (width/height), active preset, compression setting, invert flags, and source channel selections are saved to `EditorPerProjectUserSettings.ini` whenever they are changed, and restored the next time the editor starts.
+  - If the saved preset was a user preset that has since been deleted, the tool falls back to the default (ORM) preset.
+  - If the restored individual values no longer match the restored preset's defaults (e.g. the session ended on "Custom"), the preset selection is shown as "Custom", the same way a live edit would.
+  - Input textures and the output file name are intentionally not persisted, as they are specific to each packing task.
+
 ## [1.7.0] - 2026-06-08
 
 ### Added

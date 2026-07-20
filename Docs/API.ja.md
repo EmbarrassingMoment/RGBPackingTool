@@ -51,6 +51,7 @@ public:
 *   **`OnGenerateClicked`**: 生成をトリガーする前にユーザー入力を検証します (例: 少なくとも1つのテクスチャが選択されているか、解像度が有効か)。
 *   **`CreateTexture`**: テクスチャ生成プロセスのメインドライバーです。
 *   **`AutoGenerateFileName`**: 入力ファイル名の最長共通接頭辞 (Longest Common Prefix) に基づいて、適切な出力ファイル名を決定するヒューリスティックロジックです。
+*   **`SaveUISettings` / `LoadUISettings`**: 最後に使用した UI 設定 (出力パス、解像度、プリセット、圧縮設定、反転フラグ、入力チャンネル選択) を `GConfig` 経由で `EditorPerProjectUserSettings.ini` の `[TextureChannelPacker]` セクションに保存・復元します。保存は設定が確定されるたびに、復元はプリセット初期化後の `StartupModule` 内で行われます。
 
 ### データ構造
 

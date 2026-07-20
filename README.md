@@ -2,7 +2,7 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.7.0-green?style=for-the-badge)](CHANGELOG.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.8.0-green?style=for-the-badge)](CHANGELOG.md)
 [![Sponsor](https://img.shields.io/badge/Sponsor-EmbarrassingMoment-ff69b4?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/EmbarrassingMoment)
 
 **TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
@@ -33,6 +33,7 @@
   - Utilizes **Parallel Processing** (multi-threading) to significantly speed up texture resizing and conversion.
 - **Live Preview**: A Preview panel shows a low-resolution composite of the packed result before you generate an asset. Click **Update Preview** to reflect the current inputs, invert flags, and source-channel selections. A **View** dropdown switches between the RGB composite and any single channel (R/G/B/A) shown as grayscale, so data packed into Green/Blue/Alpha can be inspected individually (switching is instant and does not re-read the textures). The preview is capped to a small resolution (so it stays fast even for 16K targets) and renders linear (sRGB off) to match the generated asset.
 - **User Interface**:
+  - **Settings Persistence**: The last-used settings (output path, resolution, preset, compression, invert flags, and source channel selections) are saved to `EditorPerProjectUserSettings` and automatically restored when the editor restarts.
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Cancellable Progress**: A progress dialog with a cancel button appears during generation, allowing you to abort long operations.
   - **Overwrite Confirmation**: A confirmation dialog appears when the output asset already exists, preventing accidental data loss.
