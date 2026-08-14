@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Unpack tab reuses the existing UX: overwrite confirmation (listing all affected assets), cancellable progress dialog, toast notifications, memory warning above 8K, and full English/Japanese localization.
   - Note: `Grayscale` compression is uncompressed `PF_G8`, so each extracted 8K channel costs roughly 67 MB of video memory plus mips once created.
 
+### Changed
+- **Unreal Engine 5.8**: The sample project now targets UE 5.8 (`EngineAssociation`), and the plugin's `EngineVersion` was raised to `5.8.0`. Supported versions are now 5.5 / 5.6 / 5.7 / 5.8.
+
 ## [1.7.0] - 2026-06-08
 
 ### Added
