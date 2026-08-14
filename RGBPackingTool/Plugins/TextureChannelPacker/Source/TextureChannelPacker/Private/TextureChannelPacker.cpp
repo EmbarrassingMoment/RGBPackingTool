@@ -1,4 +1,6 @@
 #include "TextureChannelPacker.h"
+#include "TextureChannelPackerShared.h"
+#include "TextureChannelUnpacker.h"
 #include "UObject/StrongObjectPtr.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -9,8 +11,6 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Framework/Docking/TabManager.h"
-#include "Framework/Notifications/NotificationManager.h"
-#include "Widgets/Notifications/SNotificationList.h"
 #include "Styling/AppStyle.h"
 #include "Logging/LogMacros.h"
 #include "PropertyCustomizationHelpers.h"
@@ -24,17 +24,13 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "Misc/MessageDialog.h"
-#include "ImageUtils.h"
 #include "Math/UnrealMathUtility.h"
-#include "Math/Float16.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
 #include "ThumbnailRendering/ThumbnailManager.h"
-#include "Internationalization/Internationalization.h"
-#include "Internationalization/Culture.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Async/ParallelFor.h"
 #include "Serialization/JsonWriter.h"
@@ -43,38 +39,16 @@
 #include "HAL/PlatformFileManager.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Input/SSegmentedControl.h"
+#include "Widgets/SNullWidget.h"
 #include "Styling/SlateBrush.h"
 
 #define LOCTEXT_NAMESPACE "FTextureChannelPackerModule"
 
-DEFINE_LOG_CATEGORY_STATIC(LogTexturePacker, Log, All);
+using namespace TextureChannelPackerUtils;
 
 static const FName TextureChannelPackerTabName("TextureChannelPacker");
-
-static constexpr int32 LargeTextureWarningThreshold = 8192;
-static constexpr int32 MaxTextureDimension = 16384;
-
-/**
- * @brief Retrieves a localized message based on the current culture.
- *
- * This helper function returns either the Japanese text (if the current culture is Japanese)
- * or the English text (for all other cultures).
- *
- * @param Key A unique identifier for the localization key (currently unused but good for future expansion).
- * @param EnglishText The text to display in English.
- * @param JapaneseText The text to display in Japanese.
- * @return FText The localized text.
- */
-static FText GetLocalizedMessage(const FString& Key, const FString& EnglishText, const FString& JapaneseText)
-{
-    FString CultureName = FInternationalization::Get().GetCurrentCulture()->GetTwoLetterISOLanguageName();
-    if (CultureName == TEXT("ja"))
-    {
-        return FText::FromString(JapaneseText);
-    }
-    // We return FText::FromString to avoid unsafe usage of internal localization macros with dynamic strings.
-    return FText::FromString(EnglishText);
-}
 
 FText FCompressionOption::GetDisplayName() const
 {
@@ -82,19 +56,6 @@ FText FCompressionOption::GetDisplayName() const
 }
 
 // ========== Source Channel Helpers ==========
-
-/** Short single-letter label for a source channel (R/G/B/A) for compact UI. */
-static FString SourceChannelToShortString(ESourceChannel Ch)
-{
-    switch (Ch)
-    {
-    case ESourceChannel::Red:   return TEXT("R");
-    case ESourceChannel::Green: return TEXT("G");
-    case ESourceChannel::Blue:  return TEXT("B");
-    case ESourceChannel::Alpha: return TEXT("A");
-    }
-    return TEXT("R");
-}
 
 /** Stable string id for serialization. */
 static FString SourceChannelToId(ESourceChannel Ch)
@@ -155,6 +116,10 @@ TSharedPtr<FJsonObject> FChannelPackerPreset::ToJson() const
     Json->SetStringField(TEXT("DefaultSourceChannelG"), SourceChannelToId(DefaultSourceChannelG));
     Json->SetStringField(TEXT("DefaultSourceChannelB"), SourceChannelToId(DefaultSourceChannelB));
     Json->SetStringField(TEXT("DefaultSourceChannelA"), SourceChannelToId(DefaultSourceChannelA));
+    Json->SetStringField(TEXT("UnpackSuffixR"), UnpackSuffixR);
+    Json->SetStringField(TEXT("UnpackSuffixG"), UnpackSuffixG);
+    Json->SetStringField(TEXT("UnpackSuffixB"), UnpackSuffixB);
+    Json->SetStringField(TEXT("UnpackSuffixA"), UnpackSuffixA);
     return Json;
 }
 
@@ -189,6 +154,14 @@ FChannelPackerPreset FChannelPackerPreset::FromJson(const TSharedPtr<FJsonObject
     if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelG"), ChannelId)) Preset.DefaultSourceChannelG = SourceChannelFromId(ChannelId);
     if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelB"), ChannelId)) Preset.DefaultSourceChannelB = SourceChannelFromId(ChannelId);
     if (JsonObject->TryGetStringField(TEXT("DefaultSourceChannelA"), ChannelId)) Preset.DefaultSourceChannelA = SourceChannelFromId(ChannelId);
+
+    // Unpack suffix fields are optional for backward compatibility with pre-1.8.0 presets;
+    // missing fields keep the "_R"/"_G"/"_B"/"_A" defaults.
+    FString Suffix;
+    if (JsonObject->TryGetStringField(TEXT("UnpackSuffixR"), Suffix)) Preset.UnpackSuffixR = Suffix;
+    if (JsonObject->TryGetStringField(TEXT("UnpackSuffixG"), Suffix)) Preset.UnpackSuffixG = Suffix;
+    if (JsonObject->TryGetStringField(TEXT("UnpackSuffixB"), Suffix)) Preset.UnpackSuffixB = Suffix;
+    if (JsonObject->TryGetStringField(TEXT("UnpackSuffixA"), Suffix)) Preset.UnpackSuffixA = Suffix;
 
     return Preset;
 }
@@ -326,6 +299,11 @@ void FTextureChannelPackerModule::StartupModule()
         CurrentFileNameSuffix = CurrentPreset->FileNameSuffix;
     }
 
+    // Create the Unpack tab implementation. It shares the module-owned preset list and
+    // defaults to the same preset as the Pack tab (ORM).
+    Unpacker = MakeShared<FTextureChannelUnpacker>();
+    Unpacker->Initialize(&Presets, CurrentPreset);
+
     // Register Nomad Tab
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TextureChannelPackerTabName, FOnSpawnTab::CreateRaw(this, &FTextureChannelPackerModule::OnSpawnPluginTab))
         .SetDisplayName(LOCTEXT("TextureChannelPackerTabTitle", "Texture Channel Packer"))
@@ -371,6 +349,13 @@ void FTextureChannelPackerModule::ShutdownModule()
     }
     PreviewBrush.Reset();
     PreviewTexture.Reset();
+
+    // Release the Unpack tab resources.
+    if (Unpacker.IsValid())
+    {
+        Unpacker->ReleaseResources();
+        Unpacker.Reset();
+    }
 }
 
 TSharedRef<SWidget> FTextureChannelPackerModule::CreateChannelInputSlot(const TAttribute<FText>& LabelText, TWeakObjectPtr<UTexture2D>& TargetTexturePtr, bool& bInvertFlag, ESourceChannel& SourceChannelRef, const FText& TooltipText)
@@ -523,9 +508,8 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
         return ContentBrowserModule.Get().CreatePathPicker(PathPickerConfig);
     }));
 
-    return SNew(SDockTab)
-        .TabRole(ETabRole::NomadTab)
-        [
+    // Pack mode content (this module's own UI).
+    TSharedRef<SWidget> PackContent =
             SNew(SVerticalBox)
 
             // Scrollable content area
@@ -1089,6 +1073,64 @@ TSharedRef<SDockTab> FTextureChannelPackerModule::OnSpawnPluginTab(const FSpawnT
                     .Text(LOCTEXT("GenerateButtonText", "Generate Texture"))
                     .Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
                 ]
+            ];
+
+    // Unpack mode content (owned by FTextureChannelUnpacker).
+    TSharedRef<SWidget> UnpackContent = Unpacker.IsValid()
+        ? Unpacker->CreateContent()
+        : TSharedRef<SWidget>(SNullWidget::NullWidget);
+
+    return SNew(SDockTab)
+        .TabRole(ETabRole::NomadTab)
+        [
+            SNew(SVerticalBox)
+
+            // Pack / Unpack mode switcher
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(10.0f, 8.0f, 10.0f, 0.0f)
+            .HAlign(HAlign_Center)
+            [
+                SNew(SSegmentedControl<int32>)
+                .Value_Lambda([this]()
+                {
+                    return ActiveTabIndex;
+                })
+                .OnValueChanged_Lambda([this](int32 NewIndex)
+                {
+                    ActiveTabIndex = NewIndex;
+                })
+                + SSegmentedControl<int32>::Slot(0)
+                .Text(GetLocalizedMessage(TEXT("PackTabLabel"), TEXT("Pack"), TEXT("パック")))
+                .ToolTip(GetLocalizedMessage(
+                    TEXT("PackTabTooltip"),
+                    TEXT("Pack multiple textures into the channels of a single RGBA texture."),
+                    TEXT("複数のテクスチャを1枚のRGBAテクスチャのチャンネルにパックします。")))
+                + SSegmentedControl<int32>::Slot(1)
+                .Text(GetLocalizedMessage(TEXT("UnpackTabLabel"), TEXT("Unpack"), TEXT("アンパック")))
+                .ToolTip(GetLocalizedMessage(
+                    TEXT("UnpackTabTooltip"),
+                    TEXT("Extract the R/G/B/A channels of a packed texture into separate grayscale textures."),
+                    TEXT("パック済みテクスチャの R/G/B/A チャンネルを個別のグレースケールテクスチャとして抽出します。")))
+            ]
+
+            // Active mode content
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            [
+                SNew(SWidgetSwitcher)
+                .WidgetIndex_Lambda([this]()
+                {
+                    return ActiveTabIndex;
+                })
+                + SWidgetSwitcher::Slot()
+                [
+                    PackContent
+                ]
+                + SWidgetSwitcher::Slot()
+                [
+                    UnpackContent
+                ]
             ]
         ];
 }
@@ -1266,351 +1308,6 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
     }
 
     OutputFileName = BaseName + CurrentFileNameSuffix;
-}
-
-/**
- * @struct FTextureRawData
- * @brief Holds raw texture data extracted from a UTexture2D.
- *
- * This struct is used to transfer texture data from the Game Thread (where UTexture2D is accessible)
- * to background threads for processing. It ensures thread safety by copying necessary data
- * (dimensions, format, raw bytes) beforehand.
- */
-struct FTextureRawData
-{
-    TArray<uint8> RawData;
-    int32 Width = 0;
-    int32 Height = 0;
-    ETextureSourceFormat Format = TSF_Invalid;
-    FString TextureName;
-    bool bIsValid = false;
-
-    /**
-     * User-facing error message if extraction failed.
-     * Empty if no error occurred.
-     */
-    FText ErrorMessage;
-};
-
-/**
- * @struct FTextureProcessResult
- * @brief Represents the result of a texture processing operation.
- *
- * This struct contains the processed pixel data for a specific channel or an error message
- * if the operation failed. It is generated by background threads and consumed by the Game Thread.
- */
-struct FTextureProcessResult
-{
-    TArray<uint8> ProcessedData;
-    FText ErrorMessage;
-    bool bSuccess = true;
-};
-
-/**
- * @brief Extracts raw pixel data from a UTexture2D on the Game Thread.
- *
- * This function accesses the platform-specific source data of a texture asset,
- * locks the mipmap to read raw bytes, and copies them into a thread-safe struct.
- * This MUST be called on the Game Thread.
- *
- * @param SourceTex The source UTexture2D asset.
- * @return FTextureRawData A struct containing the copied raw data and metadata.
- */
-static FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
-{
-    FTextureRawData Result;
-    if (!SourceTex)
-    {
-        return Result;
-    }
-
-    Result.TextureName = SourceTex->GetName();
-
-#if WITH_EDITORONLY_DATA
-    Result.Width = SourceTex->Source.GetSizeX();
-    Result.Height = SourceTex->Source.GetSizeY();
-    Result.Format = SourceTex->Source.GetFormat();
-
-    uint8* SrcData = SourceTex->Source.LockMip(0);
-    if (SrcData)
-    {
-        int32 BytesPerPixel = SourceTex->Source.GetBytesPerPixel();
-
-        // Validation 1: Check if BytesPerPixel is valid
-        if (BytesPerPixel == 0)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("GetBytesPerPixel() returned 0 for texture: %s (Format: %d). This format may not be supported."),
-                *Result.TextureName, (int32)Result.Format);
-            SourceTex->Source.UnlockMip(0);
-            return Result;  // Return invalid result
-        }
-
-        // Compute the byte count in 64-bit to avoid int32 overflow. A 16K RGBA32F texture
-        // is 16384*16384*16 = 4 GB, which silently wraps to a small/negative value in int32
-        // (e.g. exactly 0), producing a confusing "invalid total bytes" failure. TArray is
-        // int32-indexed, so anything larger than INT32_MAX cannot be held regardless.
-        const int64 TotalBytes = (int64)Result.Width * (int64)Result.Height * (int64)BytesPerPixel;
-
-        // Validation 2: Check if TotalBytes is valid
-        if (TotalBytes <= 0)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("Invalid total bytes (%lld) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
-                TotalBytes, *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
-            SourceTex->Source.UnlockMip(0);
-            return Result;  // Return invalid result
-        }
-
-        // Validation 3: Reject textures too large for a 32-bit-indexed TArray.
-        if (TotalBytes > (int64)MAX_int32)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("Texture too large to process: %s (Width: %d, Height: %d, BPP: %d, Bytes: %lld)"),
-                *Result.TextureName, Result.Width, Result.Height, BytesPerPixel, TotalBytes);
-            SourceTex->Source.UnlockMip(0);
-            Result.ErrorMessage = GetLocalizedMessage(
-                TEXT("ErrorTextureTooLarge"),
-                TEXT("Input texture is too large to process. Reduce its resolution or use a format with fewer bytes per pixel (e.g. 8-bit instead of 32-bit float)."),
-                TEXT("入力テクスチャが大きすぎて処理できません。解像度を下げるか、ピクセルあたりのバイト数が少ない形式（32bit float ではなく 8bit など）を使用してください。")
-            );
-            return Result;  // Return invalid result
-        }
-
-        // Data is valid, proceed with copy
-        Result.RawData.SetNumUninitialized((int32)TotalBytes);
-        FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
-        Result.bIsValid = true;
-    }
-    else
-    {
-        UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *Result.TextureName);
-        Result.ErrorMessage = GetLocalizedMessage(
-            TEXT("ErrorLockFailed"),
-            TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
-            TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")
-        );
-    }
-    SourceTex->Source.UnlockMip(0);
-#else
-    UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-    Result.ErrorMessage = GetLocalizedMessage(
-        TEXT("ErrorNoEditorData"),
-        TEXT("This plugin requires Editor-only data to function. Ensure the project is built with editor support."),
-        TEXT("このプラグインはエディター専用データが必要です。プロジェクトがエディターサポート付きでビルドされていることを確認してください。")
-    );
-#endif
-
-    return Result;
-}
-
-/**
- * @brief Returns the byte offset of the requested channel within a BGRA8 pixel.
- *
- * BGRA8 lays out bytes as [B, G, R, A], so Red=2, Green=1, Blue=0, Alpha=3.
- */
-static int32 GetBGRAChannelOffset(ESourceChannel Channel)
-{
-    switch (Channel)
-    {
-    case ESourceChannel::Red:   return 2;
-    case ESourceChannel::Green: return 1;
-    case ESourceChannel::Blue:  return 0;
-    case ESourceChannel::Alpha: return 3;
-    default:                    return 2;
-    }
-}
-
-/**
- * @brief Extracts the requested channel value from an FColor.
- */
-static uint8 ExtractChannelFromFColor(const FColor& C, ESourceChannel Channel)
-{
-    switch (Channel)
-    {
-    case ESourceChannel::Red:   return C.R;
-    case ESourceChannel::Green: return C.G;
-    case ESourceChannel::Blue:  return C.B;
-    case ESourceChannel::Alpha: return C.A;
-    default:                    return C.R;
-    }
-}
-
-/**
- * @brief Returns true for source formats that physically only carry one channel of data.
- *
- * For these formats, the channel selector is meaningless — the lone luminance value is
- * always used regardless of which output channel the user picks.
- */
-static bool IsSingleChannelFormat(ETextureSourceFormat Format)
-{
-    return Format == TSF_G8 || Format == TSF_G16 || Format == TSF_R16F || Format == TSF_R32F;
-}
-
-/**
- * @brief Processes raw texture data to produce a single channel of output.
- *
- * This function handles resizing (using FImageUtils) and format conversion (e.g., extracting
- * the selected channel from BGRA/RGBA, or converting 16-bit grayscale to 8-bit).
- * This function is designed to be thread-safe and run in parallel tasks.
- *
- * @param Input The raw source data extracted from the input texture.
- * @param TargetWidth The target width for the output.
- * @param TargetHeight The target height for the output.
- * @param SourceChannel Which channel of the input to read (R/G/B/A). Ignored for single-channel formats.
- * @return FTextureProcessResult The processed single-channel 8-bit data.
- */
-static FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel)
-{
-    FTextureProcessResult Result;
-    // Default to zero-filled array
-    Result.ProcessedData.Init(0, TargetWidth * TargetHeight);
-
-    if (!Input.bIsValid)
-    {
-        return Result; // Empty/Invalid input results in black channel (or white if handled by caller default)
-    }
-
-    int32 SrcWidth = Input.Width;
-    int32 SrcHeight = Input.Height;
-    int32 NumPixels = SrcWidth * SrcHeight;
-    const uint8* SrcData = Input.RawData.GetData();
-
-    // Optimization: Fast path for same-resolution textures
-    if (SrcWidth == TargetWidth && SrcHeight == TargetHeight)
-    {
-        if (Input.Format == TSF_G8)
-        {
-            // Direct move for Grayscale input (zero-copy optimization).
-            // Channel selection is moot for single-channel data.
-            Result.ProcessedData = MoveTemp(Input.RawData);
-            return Result;
-        }
-        else if (Input.Format == TSF_BGRA8)
-        {
-            // Parallel channel extraction for BGRA input
-            Result.ProcessedData.SetNumUninitialized(NumPixels);
-            uint8* DestData = Result.ProcessedData.GetData();
-            const uint8* SrcPtr = SrcData;
-            const int32 ChannelOffset = GetBGRAChannelOffset(SourceChannel);
-
-            ParallelFor(NumPixels, [DestData, SrcPtr, ChannelOffset](int32 i)
-            {
-                DestData[i] = SrcPtr[i * 4 + ChannelOffset];
-            });
-            return Result;
-        }
-    }
-
-    TArray<FColor> SrcColors;
-    SrcColors.SetNumUninitialized(NumPixels);
-
-    // Convert input to FColor (RGBA values stored in FColor's R/G/B/A members).
-    // For single-channel formats we replicate the value across R/G/B so that channel
-    // selection still produces the expected result.
-    switch (Input.Format)
-    {
-    case TSF_BGRA8:
-    {
-        FMemory::Memcpy(SrcColors.GetData(), SrcData, Input.RawData.Num());
-        break;
-    }
-    case TSF_G8:
-    {
-        const uint8* GrayData = SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = GrayData[i];
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_G16:
-    {
-        // 16-bit Grayscale: 2 bytes per pixel
-        const uint16* GrayData16 = (const uint16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)(GrayData16[i] >> 8);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R16F:
-    {
-        // Half-float: 2 bytes per pixel
-        const FFloat16* Pixel16 = (const FFloat16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R32F:
-    {
-        // Float: 4 bytes per pixel
-        const float* Pixel32 = (const float*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_RGBA32F:
-    {
-        // Linear Color: 16 bytes per pixel. Preserve all four channels so the user can pick any.
-        const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            const FLinearColor& LC = LinearColors[i];
-            uint8 R = (uint8)FMath::Clamp<float>(LC.R * 255.0f, 0.0f, 255.0f);
-            uint8 G = (uint8)FMath::Clamp<float>(LC.G * 255.0f, 0.0f, 255.0f);
-            uint8 B = (uint8)FMath::Clamp<float>(LC.B * 255.0f, 0.0f, 255.0f);
-            uint8 A = (uint8)FMath::Clamp<float>(LC.A * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(R, G, B, A);
-        }
-        break;
-    }
-    default:
-    {
-        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)Input.Format, *Input.TextureName);
-        Result.bSuccess = false;
-        Result.ErrorMessage = GetLocalizedMessage(
-            TEXT("ErrorUnsupportedFormat"),
-            TEXT("Texture format not supported. Please convert to PNG or TGA."),
-            TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")
-        );
-        return Result;
-    }
-    }
-
-    // Resize if necessary
-    TArray<FColor> ResizedColors;
-    if (SrcWidth != TargetWidth || SrcHeight != TargetHeight)
-    {
-        ResizedColors.SetNum(TargetWidth * TargetHeight);
-        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetWidth, TargetHeight, ResizedColors, false);
-    }
-    else
-    {
-        ResizedColors = MoveTemp(SrcColors);
-    }
-
-    // For single-channel source formats, the channel selection has no effect (R=G=B).
-    // We always read R to keep the inner loop branch-free.
-    const ESourceChannel EffectiveChannel = IsSingleChannelFormat(Input.Format) ? ESourceChannel::Red : SourceChannel;
-
-    // Convert FColor to uint8 array (single channel, 1 byte per pixel)
-    Result.ProcessedData.SetNumUninitialized(TargetWidth * TargetHeight);
-    uint8* DestData = Result.ProcessedData.GetData();
-    for (int32 i = 0; i < TargetWidth * TargetHeight; ++i)
-    {
-        DestData[i] = ExtractChannelFromFColor(ResizedColors[i], EffectiveChannel);
-    }
-
-    return Result;
 }
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Width, int32 Height)
@@ -2042,24 +1739,8 @@ void FTextureChannelPackerModule::RebuildPreviewTexture()
 
 void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bSuccess)
 {
-    FNotificationInfo Info(Message);
-    Info.ExpireDuration = 3.0f;
-
-    if (bSuccess)
-    {
-        Info.Image = FAppStyle::GetBrush("Icons.SuccessWithColor");
-    }
-    else
-    {
-        Info.Image = FAppStyle::GetBrush("Icons.ErrorWithColor");
-    }
-
-    TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-    if (NotificationItem.IsValid())
-    {
-        NotificationItem->SetCompletionState(bSuccess ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
-        NotificationItem->ExpireAndFadeout();
-    }
+    // Explicit qualification: the unqualified name would recurse into this member.
+    TextureChannelPackerUtils::ShowNotification(Message, bSuccess);
 }
 
 TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSettings() const
@@ -2126,6 +1807,7 @@ void FTextureChannelPackerModule::InitializeBuiltInPresets()
         Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
         Preset->FileNameSuffix = TEXT("_Packed");
         Preset->DefaultCompressionName = TEXT("Masks");
+        // Unpack suffixes keep the plain _R/_G/_B/_A defaults for Custom.
         CustomPreset = Preset;
         Presets.Add(Preset);
     }
@@ -2145,6 +1827,10 @@ void FTextureChannelPackerModule::InitializeBuiltInPresets()
         Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
         Preset->FileNameSuffix = TEXT("_ORM");
         Preset->DefaultCompressionName = TEXT("Masks");
+        Preset->UnpackSuffixR = TEXT("_AO");
+        Preset->UnpackSuffixG = TEXT("_Roughness");
+        Preset->UnpackSuffixB = TEXT("_Metallic");
+        Preset->UnpackSuffixA = TEXT("_A");
         Presets.Add(Preset);
     }
 
@@ -2163,6 +1849,10 @@ void FTextureChannelPackerModule::InitializeBuiltInPresets()
         Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
         Preset->FileNameSuffix = TEXT("_MRA");
         Preset->DefaultCompressionName = TEXT("Masks");
+        Preset->UnpackSuffixR = TEXT("_Metallic");
+        Preset->UnpackSuffixG = TEXT("_Roughness");
+        Preset->UnpackSuffixB = TEXT("_AO");
+        Preset->UnpackSuffixA = TEXT("_A");
         Presets.Add(Preset);
     }
 }
@@ -2236,6 +1926,12 @@ void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
         NewPreset.BlueLabelJa = CurrentPreset->BlueLabelJa;
         NewPreset.AlphaLabelEn = CurrentPreset->AlphaLabelEn;
         NewPreset.AlphaLabelJa = CurrentPreset->AlphaLabelJa;
+
+        // The Pack tab has no UI for unpack suffixes; inherit them from the preset being customized.
+        NewPreset.UnpackSuffixR = CurrentPreset->UnpackSuffixR;
+        NewPreset.UnpackSuffixG = CurrentPreset->UnpackSuffixG;
+        NewPreset.UnpackSuffixB = CurrentPreset->UnpackSuffixB;
+        NewPreset.UnpackSuffixA = CurrentPreset->UnpackSuffixA;
     }
 
     NewPreset.FileNameSuffix = CurrentFileNameSuffix;
@@ -2279,6 +1975,12 @@ void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
             PresetComboBox->SetSelectedItem(CurrentPreset);
         }
 
+        // Keep the Unpack tab's preset dropdown in sync.
+        if (Unpacker.IsValid())
+        {
+            Unpacker->OnPresetListChanged();
+        }
+
         FText Msg = FText::Format(
             GetLocalizedMessage(TEXT("PresetSaved"), TEXT("Preset \"{0}\" saved."), TEXT("プリセット「{0}」を保存しました。")),
             FText::FromString(Name)
@@ -2316,6 +2018,12 @@ void FTextureChannelPackerModule::DeleteCurrentPreset()
     {
         PresetComboBox->RefreshOptions();
         PresetComboBox->SetSelectedItem(CustomPreset);
+    }
+
+    // Keep the Unpack tab's preset dropdown in sync (it falls back if it was using the deleted preset).
+    if (Unpacker.IsValid())
+    {
+        Unpacker->OnPresetListChanged();
     }
 
     FText Msg = FText::Format(

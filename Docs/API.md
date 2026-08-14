@@ -6,21 +6,24 @@ This document provides technical details about the `TextureChannelPacker` module
 
 ## Overview
 
-The **TextureChannelPacker** is an Editor-only plugin module that provides a Slate-based UI tool for packing individual grayscale or color textures (Red, Green, Blue, Alpha) into a single RGBA texture asset.
+The **TextureChannelPacker** is an Editor-only plugin module that provides a Slate-based UI tool for packing individual grayscale or color textures (Red, Green, Blue, Alpha) into a single RGBA texture asset. Since v1.8.0 it also provides the reverse operation: an **Unpack** tab that splits a packed texture into per-channel grayscale assets.
 
 ### Key Features
 - **Editor Integration**: Integrated into the Level Editor "Tools" menu.
 - **Thread Safety**: Uses explicit data extraction and reconstruction steps to safely handle `UTexture2D` resources on the Game Thread.
 - **Parallel Processing**: Uses `ParallelFor` to process and resize texture channels concurrently.
 - **Smart Naming**: Automatically generates output filenames based on input assets.
+- **Pack / Unpack Modes**: A segmented control at the top of the dock tab switches between the two workflows (`SWidgetSwitcher`).
 
 ## Module Architecture
 
-The module is implemented as a single primary class, `FTextureChannelPackerModule`, which inherits from `IModuleInterface`.
+The module's primary class is `FTextureChannelPackerModule` (inherits `IModuleInterface`), which owns the dock tab and the Pack workflow. The Unpack workflow lives in a separate class, `FTextureChannelUnpacker`, instantiated by the module at startup. Processing code shared by both workflows sits in the `TextureChannelPackerUtils` namespace.
 
 *   **Source Path**: `Plugins/TextureChannelPacker/Source/TextureChannelPacker/`
 *   **Header**: `Public/TextureChannelPacker.h`
 *   **Implementation**: `Private/TextureChannelPacker.cpp`
+*   **Shared Utilities**: `Private/TextureChannelPackerShared.h` / `.cpp` (namespace `TextureChannelPackerUtils`)
+*   **Unpack Tab**: `Private/TextureChannelUnpacker.h` / `.cpp` (class `FTextureChannelUnpacker`)
 
 ### Public Interface
 
@@ -52,9 +55,22 @@ This class manages the UI state, holds references to input textures, and execute
 *   **`CreateTexture`**: The main driver for the texture generation process.
 *   **`AutoGenerateFileName`**: heuristic logic to determine a suitable output filename based on the Longest Common Prefix of inputs.
 
+### Unpack Class: `FTextureChannelUnpacker`
+
+Owns all Unpack tab state and UI. Created in `StartupModule` and kept alive until `ShutdownModule`, so its widget lambdas can safely capture the raw `this` pointer (the same lifetime contract the module uses).
+
+#### Key Methods
+
+*   **`CreateContent`**: Builds the Unpack tab Slate UI (preset dropdown, source picker, 2×2 channel grid, output settings, Unpack button).
+*   **`UpdatePreview`**: Extracts the source once, runs uniform-value detection per channel on the full-resolution raw data (early-exits on the first differing pixel), auto-unchecks uniform ("possibly unused") channels, then builds four grayscale preview textures at a capped resolution.
+*   **`OnExtractClicked`**: Validates inputs, confirms overwrites (single dialog listing all affected assets), then writes one `TSF_G8` texture asset per selected channel (`TC_Grayscale`, `SRGB = false`) at the source resolution.
+*   **`AutoGenerateBaseName`**: Strips any known packed suffix (every preset's `FileNameSuffix`) from the source name and enforces the `T_` prefix. Per-channel output names are `<Base><UnpackSuffix>` using the selected preset's suffixes.
+
+The Unpack tab shares the module-owned preset array (`FChannelPackerPreset` gained `UnpackSuffixR/G/B/A` fields; older JSON files load with `_R`/`_G`/`_B`/`_A` defaults). The module calls `OnPresetListChanged` after saving/deleting presets to keep the Unpack dropdown in sync.
+
 ### Data Structures
 
-To support multi-threaded processing without accessing `UObject` methods (like `LockMip`) from background threads, the module uses two helper structs defined in `TextureChannelPacker.cpp`:
+To support multi-threaded processing without accessing `UObject` methods (like `LockMip`) from background threads, the module uses two helper structs defined in the `TextureChannelPackerUtils` namespace (`TextureChannelPackerShared.h`):
 
 #### `FTextureRawData`
 Used to transport raw pixel data from the Game Thread to worker threads.
@@ -100,6 +116,14 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
     -   The `Source` mip is locked for writing.
     -   Data from the 4 `FTextureProcessResult` arrays is interleaved into the final `BGRA8` memory layout.
     -   `UpdateResource()` and `PostEditChange()` are called to finalize the asset.
+
+### Unpack Flow
+
+The unpack pipeline (`FTextureChannelUnpacker::OnExtractClicked`) reuses the same extraction/processing primitives:
+
+1.  **Extraction (Game Thread)**: `ExtractTextureSourceData` is called once for the single source texture.
+2.  **Channel Extraction (Parallel Threads)**: `ProcessTextureSourceData` runs once per selected channel at the source resolution. Because all tasks share one `FTextureRawData`, they pass `bCanConsumeInput = false` so the same-resolution `TSF_G8` fast path copies instead of moving the shared buffer (the Pack flow keeps the zero-copy move, since each channel there owns its own raw data).
+3.  **Asset Creation (Game Thread)**: For each selected channel, a `TSF_G8` source is initialized, the channel bytes are memcpy'd in, and the asset is finalized with `TC_Grayscale` compression and `SRGB = false`.
 
 ## Extension Points
 

@@ -7,6 +7,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-14
+
+### Added
+- **Unpack Mode**: The tool window now has a **Pack / Unpack** switcher at the top. The new Unpack tab does the reverse of packing: it splits a packed RGBA texture into separate grayscale textures, one asset per channel.
+  - **Instant Channel Preview**: Selecting a source texture immediately shows its R/G/B/A contents as a 2×2 grid of grayscale previews (capped to a small resolution, so it stays fast even for 16K sources).
+  - **Per-Channel Export Toggles**: Each channel has a checkbox controlling whether it is exported as an asset.
+  - **Unused Channel Detection**: Channels whose pixels all share a single value (e.g. an alpha that is uniformly 255) are flagged with a "Uniform" badge and automatically excluded from export. Re-check the box to export them anyway.
+  - **Smart Naming**: The output base name is derived from the source texture name with known packed suffixes stripped (e.g. `T_Rock_ORM` → `T_Rock`), and each channel appends a preset-driven suffix — with the ORM preset, `T_Rock_AO` / `T_Rock_Roughness` / `T_Rock_Metallic`. The base name can be edited manually.
+  - **Preset Integration**: Presets (built-in and user-created) now carry per-channel unpack suffixes, selectable from a Preset dropdown in the Unpack tab. Older preset files load with the missing fields defaulting to `_R`/`_G`/`_B`/`_A`.
+  - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
+  - The Unpack tab reuses the existing UX: overwrite confirmation (listing all affected assets), cancellable progress dialog, toast notifications, memory warning above 8K, and full English/Japanese localization.
+
 ## [1.7.0] - 2026-06-08
 
 ### Added

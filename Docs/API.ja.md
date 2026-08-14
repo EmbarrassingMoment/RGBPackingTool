@@ -6,21 +6,24 @@
 
 ## 概要
 
-**TextureChannelPacker** は、個々のグレースケールまたはカラーテクスチャ (赤、緑、青、アルファ) を単一の RGBA テクスチャアセットにパッキングするための Slate ベースの UI ツールを提供する、エディタ専用のプラグインモジュールです。
+**TextureChannelPacker** は、個々のグレースケールまたはカラーテクスチャ (赤、緑、青、アルファ) を単一の RGBA テクスチャアセットにパッキングするための Slate ベースの UI ツールを提供する、エディタ専用のプラグインモジュールです。v1.8.0 からは逆の操作にも対応しており、**アンパック** タブでパック済みテクスチャをチャンネルごとのグレースケールアセットに分解できます。
 
 ### 主な機能
 - **エディタ統合**: レベルエディタの「ツール (Tools)」メニューに統合されています。
 - **スレッドセーフ**: 明示的なデータの抽出と再構築の手順を使用し、ゲームスレッド上で `UTexture2D` リソースを安全に扱います。
 - **並列処理**: `ParallelFor` を使用して、テクスチャチャンネルの処理とリサイズを並行して行います。
 - **スマート命名機能**: 入力アセットに基づいて出力ファイル名を自動生成します。
+- **パック / アンパックモード**: ドックタブ上部のセグメンテッドコントロールで2つのワークフローを切り替えます（`SWidgetSwitcher`）。
 
 ## モジュールアーキテクチャ
 
-このモジュールは、`IModuleInterface` を継承する単一の主要クラス `FTextureChannelPackerModule` として実装されています。
+モジュールの主要クラスは `FTextureChannelPackerModule`（`IModuleInterface` を継承）で、ドックタブとパックワークフローを所有します。アンパックワークフローは別クラス `FTextureChannelUnpacker` として実装され、モジュール起動時にインスタンス化されます。両ワークフローで共有される処理コードは `TextureChannelPackerUtils` 名前空間にあります。
 
 *   **ソースパス**: `Plugins/TextureChannelPacker/Source/TextureChannelPacker/`
 *   **ヘッダー**: `Public/TextureChannelPacker.h`
 *   **実装**: `Private/TextureChannelPacker.cpp`
+*   **共有ユーティリティ**: `Private/TextureChannelPackerShared.h` / `.cpp`（名前空間 `TextureChannelPackerUtils`）
+*   **アンパックタブ**: `Private/TextureChannelUnpacker.h` / `.cpp`（クラス `FTextureChannelUnpacker`）
 
 ### パブリックインターフェース
 
@@ -52,9 +55,22 @@ public:
 *   **`CreateTexture`**: テクスチャ生成プロセスのメインドライバーです。
 *   **`AutoGenerateFileName`**: 入力ファイル名の最長共通接頭辞 (Longest Common Prefix) に基づいて、適切な出力ファイル名を決定するヒューリスティックロジックです。
 
+### アンパッククラス: `FTextureChannelUnpacker`
+
+アンパックタブの状態と UI をすべて所有します。`StartupModule` で作成され `ShutdownModule` まで保持されるため、ウィジェットのラムダは生の `this` ポインタを安全にキャプチャできます（モジュール自身と同じライフタイム契約です）。
+
+#### 主要メソッド
+
+*   **`CreateContent`**: アンパックタブの Slate UI（プリセットドロップダウン、ソースピッカー、2×2 チャンネルグリッド、出力設定、アンパックボタン）を構築します。
+*   **`UpdatePreview`**: ソースを1回抽出し、フル解像度の生データに対してチャンネルごとの均一値検出を実行し（最初に異なるピクセルが見つかった時点で早期終了）、均一（「未使用の可能性」）なチャンネルのチェックを自動的に外した後、上限付き解像度で4枚のグレースケールプレビューテクスチャを構築します。
+*   **`OnExtractClicked`**: 入力を検証し、上書き確認（対象アセットを一覧表示する単一ダイアログ）を行った後、選択された各チャンネルにつき1枚の `TSF_G8` テクスチャアセット（`TC_Grayscale`、`SRGB = false`）をソース解像度で書き出します。
+*   **`AutoGenerateBaseName`**: ソース名から既知のパックサフィックス（各プリセットの `FileNameSuffix`）を除去し、`T_` プレフィックスを付与します。チャンネルごとの出力名は、選択中のプリセットのサフィックスを使った `<Base><UnpackSuffix>` になります。
+
+アンパックタブはモジュール所有のプリセット配列を共有します（`FChannelPackerPreset` に `UnpackSuffixR/G/B/A` フィールドが追加され、既存の JSON ファイルは `_R`/`_G`/`_B`/`_A` をデフォルトとして読み込まれます）。プリセットの保存・削除後は、モジュールが `OnPresetListChanged` を呼び出してアンパック側のドロップダウンを同期します。
+
 ### データ構造
 
-バックグラウンドスレッドから `UObject` のメソッド (例: `LockMip`) にアクセスせずにマルチスレッド処理をサポートするため、モジュールは `TextureChannelPacker.cpp` で定義された2つのヘルパー構造体を使用します。
+バックグラウンドスレッドから `UObject` のメソッド (例: `LockMip`) にアクセスせずにマルチスレッド処理をサポートするため、モジュールは `TextureChannelPackerUtils` 名前空間 (`TextureChannelPackerShared.h`) で定義された2つのヘルパー構造体を使用します。
 
 #### `FTextureRawData`
 ゲームスレッドからワーカースレッドへ生のピクセルデータを転送するために使用されます。
@@ -100,6 +116,14 @@ struct FTextureProcessResult
     -   書き込み用に `Source` ミップがロックされます。
     -   4つの `FTextureProcessResult` 配列からのデータが、最終的な `BGRA8` メモリレイアウトにインターリーブ (結合) されます。
     -   `UpdateResource()` と `PostEditChange()` が呼び出され、アセットがファイナライズされます。
+
+### アンパックフロー
+
+アンパックパイプライン (`FTextureChannelUnpacker::OnExtractClicked`) は、同じ抽出・処理プリミティブを再利用します。
+
+1.  **抽出 (ゲームスレッド)**: 単一のソーステクスチャに対して `ExtractTextureSourceData` を1回呼び出します。
+2.  **チャンネル抽出 (並列スレッド)**: 選択された各チャンネルに対して、ソース解像度で `ProcessTextureSourceData` を実行します。すべてのタスクが1つの `FTextureRawData` を共有するため、`bCanConsumeInput = false` を渡し、同解像度 `TSF_G8` の高速パスが共有バッファをムーブせずコピーするようにします（パックフローでは各チャンネルが専用の生データを所有するため、ゼロコピーのムーブ最適化を維持しています）。
+3.  **アセット作成 (ゲームスレッド)**: 選択された各チャンネルについて `TSF_G8` の Source を初期化し、チャンネルのバイト列を memcpy した後、`TC_Grayscale` 圧縮・`SRGB = false` でアセットをファイナライズします。
 
 ## 拡張ポイント
 

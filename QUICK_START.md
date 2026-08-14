@@ -39,6 +39,16 @@ Click **Update Preview** to see a low-resolution composite of the packed result 
 4.  Click the **Folder Icon** if you need to change the save location.
 5.  Click **Generate Texture**. If an asset with the same name exists, a confirmation dialog will appear.
 
+## Reverse Workflow: Unpack
+
+Need the opposite? The **Unpack** tab splits a packed texture back into per-channel grayscale assets.
+
+1.  Click **Unpack** in the switcher at the top of the tool window.
+2.  Select the packed **Source Texture** — its R/G/B/A channels are previewed instantly in a 2×2 grid.
+3.  Channels flagged **Uniform** (all pixels share one value → likely unused) are unchecked automatically; toggle any channel's checkbox to include/exclude it.
+4.  Check the auto-generated **Base File Name** (`T_Rock_ORM` → `T_Rock`); each cell shows the final name with the preset's suffix (e.g., `T_Rock_AO`).
+5.  Click **Unpack Textures**. One grayscale (G8) asset per selected channel is created at the source resolution.
+
 ## Pro Tips
 *   Empty R, G, B slots are automatically filled with **Black (0)**. Alpha defaults to **White (255)**.
 *   No need to resize textures beforehand; the tool handles it automatically.
@@ -48,3 +58,4 @@ Click **Update Preview** to see a low-resolution composite of the packed result 
 *   Hit **Update Preview** to check the result (and inspect single channels) before committing to a full generate.
 *   Use the **Invert** checkbox to flip values per-channel — no need to edit source textures.
 *   Width and Height can be set independently for non-square output textures.
+*   Use the **Unpack** tab to recover individual masks from an existing packed texture — the preset controls the output suffixes (e.g., `_AO` / `_Roughness` / `_Metallic`).
