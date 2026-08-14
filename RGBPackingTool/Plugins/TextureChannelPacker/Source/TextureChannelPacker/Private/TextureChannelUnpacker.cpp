@@ -40,102 +40,229 @@
 
 using namespace TextureChannelPackerUtils;
 
-/** Channel processing order for the unpack grid (R=0, G=1, B=2, A=3). */
-static const ESourceChannel GUnpackChannelOrder[4] = { ESourceChannel::Red, ESourceChannel::Green, ESourceChannel::Blue, ESourceChannel::Alpha };
+/** Channel labels for the unpack grid, indexed R=0, G=1, B=2, A=3. */
 static const TCHAR* GUnpackChannelLetters[4] = { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") };
 
 /**
- * @brief Detects whether every pixel of the requested channel holds the same value.
+ * @brief Builds a per-pixel channel sampler for the given source format and hands it to Visitor.
  *
- * Runs on the full-resolution raw data so detection is exact (a downscaled preview could
- * average away small variations). Cheap in practice: non-uniform channels early-exit on
- * the first differing pixel. Values are compared after the same 8-bit conversion the
- * processing pipeline applies, so the reported value matches the preview and the output.
+ * The sampler reads a single channel value straight out of the locked mip and converts it to
+ * 8-bit, so neither the preview nor the extraction needs an intermediate full-resolution copy
+ * or FColor buffer. Dispatching on the format once (outside the pixel loop) keeps the inner
+ * loop free of per-pixel branching on the format.
  *
- * @param Input Raw source data (must be valid).
- * @param Channel Which channel to inspect.
- * @param OutValue Receives the uniform value when the function returns true.
- * @return True if the channel is uniform (likely unused).
+ * Sampler signature: uint8 (int64 PixelIndex, int32 ChannelIndex), where ChannelIndex is
+ * 0=R, 1=G, 2=B, 3=A. Pixel indices are 64-bit, so sources larger than 2 GB are handled.
+ *
+ * Single-channel formats (G8/G16/R16F/R32F) replicate their lone value across R/G/B and
+ * report an opaque (255) Alpha, matching how the packing pipeline widens them to FColor.
+ *
+ * @return False if the source format is unsupported (Visitor is then not called).
  */
-static bool ComputeChannelUniformValue(const FTextureRawData& Input, ESourceChannel Channel, uint8& OutValue)
+template <typename FVisitor>
+static bool VisitChannelSampler(const uint8* Src, ETextureSourceFormat Format, FVisitor&& Visitor)
 {
-    OutValue = 0;
-    if (!Input.bIsValid || Input.Width <= 0 || Input.Height <= 0)
-    {
-        return false;
-    }
+    // Byte offsets of R, G, B, A within a BGRA8 pixel (see GetBGRAChannelOffset).
+    static const int32 BGRAOffsets[4] = { 2, 1, 0, 3 };
 
-    // Single-channel sources carry no alpha; the packing pipeline treats it as opaque.
-    if (IsSingleChannelFormat(Input.Format) && Channel == ESourceChannel::Alpha)
-    {
-        OutValue = 255;
-        return true;
-    }
-
-    const int64 NumPixels = (int64)Input.Width * (int64)Input.Height;
-    const uint8* Src = Input.RawData.GetData();
-
-    // Scans converted 8-bit values, early-exiting on the first mismatch.
-    auto ScanConverted = [NumPixels, &OutValue](auto GetValueAt) -> bool
-    {
-        const uint8 First = GetValueAt((int64)0);
-        for (int64 i = 1; i < NumPixels; ++i)
-        {
-            if (GetValueAt(i) != First)
-            {
-                return false;
-            }
-        }
-        OutValue = First;
-        return true;
-    };
-
-    switch (Input.Format)
+    switch (Format)
     {
     case TSF_BGRA8:
     {
-        const int32 Offset = GetBGRAChannelOffset(Channel);
-        return ScanConverted([Src, Offset](int64 i) { return Src[i * 4 + Offset]; });
+        Visitor([Src](int64 PixelIndex, int32 Channel) -> uint8
+        {
+            return Src[PixelIndex * 4 + BGRAOffsets[Channel]];
+        });
+        return true;
     }
     case TSF_G8:
     {
-        return ScanConverted([Src](int64 i) { return Src[i]; });
+        Visitor([Src](int64 PixelIndex, int32 Channel) -> uint8
+        {
+            return Channel == 3 ? (uint8)255 : Src[PixelIndex];
+        });
+        return true;
     }
     case TSF_G16:
     {
         const uint16* Pixels = (const uint16*)Src;
-        return ScanConverted([Pixels](int64 i) { return (uint8)(Pixels[i] >> 8); });
+        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
+        {
+            return Channel == 3 ? (uint8)255 : (uint8)(Pixels[PixelIndex] >> 8);
+        });
+        return true;
     }
     case TSF_R16F:
     {
         const FFloat16* Pixels = (const FFloat16*)Src;
-        return ScanConverted([Pixels](int64 i) { return (uint8)FMath::Clamp<float>((float)Pixels[i] * 255.0f, 0.0f, 255.0f); });
+        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
+        {
+            if (Channel == 3)
+            {
+                return 255;
+            }
+            return (uint8)FMath::Clamp<float>((float)Pixels[PixelIndex] * 255.0f, 0.0f, 255.0f);
+        });
+        return true;
     }
     case TSF_R32F:
     {
         const float* Pixels = (const float*)Src;
-        return ScanConverted([Pixels](int64 i) { return (uint8)FMath::Clamp<float>(Pixels[i] * 255.0f, 0.0f, 255.0f); });
+        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
+        {
+            if (Channel == 3)
+            {
+                return 255;
+            }
+            return (uint8)FMath::Clamp<float>(Pixels[PixelIndex] * 255.0f, 0.0f, 255.0f);
+        });
+        return true;
     }
     case TSF_RGBA32F:
     {
         const FLinearColor* Pixels = (const FLinearColor*)Src;
-        return ScanConverted([Pixels, Channel](int64 i)
+        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
         {
-            const FLinearColor& LC = Pixels[i];
+            const FLinearColor& LC = Pixels[PixelIndex];
             float Value;
             switch (Channel)
             {
-            case ESourceChannel::Red:   Value = LC.R; break;
-            case ESourceChannel::Green: Value = LC.G; break;
-            case ESourceChannel::Blue:  Value = LC.B; break;
-            default:                    Value = LC.A; break;
+            case 0:  Value = LC.R; break;
+            case 1:  Value = LC.G; break;
+            case 2:  Value = LC.B; break;
+            default: Value = LC.A; break;
             }
             return (uint8)FMath::Clamp<float>(Value * 255.0f, 0.0f, 255.0f);
         });
+        return true;
     }
     default:
         return false;
     }
+}
+
+/** Per-destination-row uniform-tracking state, merged after the parallel scan. */
+struct FChannelRowScan
+{
+    uint8 First[4] = { 0, 0, 0, 0 };
+    bool bUniform[4] = { true, true, true, true };
+};
+
+/**
+ * @brief Box-downsamples all four channels and detects uniform channels in a single pass.
+ *
+ * Previously the preview converted the whole source to FColor once per channel (four
+ * full-resolution buffers for a 256 px thumbnail) and then scanned the source again per
+ * channel for uniform detection. This walks every source pixel exactly once instead,
+ * accumulating into the small destination buffers, so the only allocations are the four
+ * DstW*DstH byte arrays regardless of how large the source is.
+ *
+ * Uniform detection stays exact because every source pixel is visited — averaging into the
+ * preview could otherwise hide a single differing pixel.
+ *
+ * Work is split across destination rows. Each row owns a disjoint band of source rows and
+ * writes only its own slice of the output, so no synchronization is needed.
+ */
+template <typename FSampler>
+static void ScanAndDownsampleChannels(
+    const FSampler& Sample,
+    int32 SrcW, int32 SrcH,
+    int32 DstW, int32 DstH,
+    TArray<uint8> (&OutChannels)[4],
+    bool (&bOutUniform)[4],
+    uint8 (&OutUniformValue)[4])
+{
+    const int32 NumDst = DstW * DstH;
+    for (int32 Channel = 0; Channel < 4; ++Channel)
+    {
+        OutChannels[Channel].SetNumUninitialized(NumDst);
+    }
+
+    TArray<FChannelRowScan> RowScans;
+    RowScans.SetNum(DstH);
+
+    ParallelFor(DstH, [&](int32 dy)
+    {
+        // Source rows covered by this destination row. DstH <= SrcH, so the band is never empty
+        // and the bands of all destination rows exactly partition the source.
+        const int64 y0 = ((int64)dy * SrcH) / DstH;
+        const int64 y1 = FMath::Max(y0 + 1, ((int64)(dy + 1) * SrcH) / DstH);
+
+        FChannelRowScan& Row = RowScans[dy];
+        bool bFirstPixel = true;
+
+        for (int32 dx = 0; dx < DstW; ++dx)
+        {
+            const int64 x0 = ((int64)dx * SrcW) / DstW;
+            const int64 x1 = FMath::Max(x0 + 1, ((int64)(dx + 1) * SrcW) / DstW);
+
+            uint64 Sums[4] = { 0, 0, 0, 0 };
+            uint64 Count = 0;
+
+            for (int64 y = y0; y < y1; ++y)
+            {
+                const int64 RowOffset = y * (int64)SrcW;
+                for (int64 x = x0; x < x1; ++x)
+                {
+                    const int64 SrcIndex = RowOffset + x;
+                    for (int32 Channel = 0; Channel < 4; ++Channel)
+                    {
+                        const uint8 Value = Sample(SrcIndex, Channel);
+                        Sums[Channel] += Value;
+                        if (bFirstPixel)
+                        {
+                            Row.First[Channel] = Value;
+                        }
+                        else if (Row.bUniform[Channel] && Value != Row.First[Channel])
+                        {
+                            Row.bUniform[Channel] = false;
+                        }
+                    }
+                    bFirstPixel = false;
+                    ++Count;
+                }
+            }
+
+            const int32 DstIndex = dy * DstW + dx;
+            for (int32 Channel = 0; Channel < 4; ++Channel)
+            {
+                OutChannels[Channel][DstIndex] = (uint8)(Sums[Channel] / FMath::Max<uint64>(Count, 1));
+            }
+        }
+    });
+
+    // A channel is uniform overall only if every row is uniform and they all agree on the value.
+    for (int32 Channel = 0; Channel < 4; ++Channel)
+    {
+        OutUniformValue[Channel] = RowScans[0].First[Channel];
+        bOutUniform[Channel] = true;
+        for (int32 dy = 0; dy < DstH; ++dy)
+        {
+            if (!RowScans[dy].bUniform[Channel] || RowScans[dy].First[Channel] != OutUniformValue[Channel])
+            {
+                bOutUniform[Channel] = false;
+                break;
+            }
+        }
+    }
+}
+
+/**
+ * @brief Copies one channel out of the source at full resolution.
+ *
+ * Reads straight from the locked mip through the sampler, so the only allocation is the
+ * output buffer itself (one byte per pixel).
+ */
+template <typename FSampler>
+static void ExtractChannelBytes(const FSampler& Sample, int32 Channel, int64 NumPixels, TArray<uint8>& Out)
+{
+    Out.SetNumUninitialized((int32)NumPixels);
+    uint8* Dest = Out.GetData();
+
+    ParallelFor((int32)NumPixels, [&Sample, Dest, Channel](int32 PixelIndex)
+    {
+        Dest[PixelIndex] = Sample((int64)PixelIndex, Channel);
+    });
 }
 
 void FTextureChannelUnpacker::Initialize(const TArray<TSharedPtr<FChannelPackerPreset>>* InPresets, TSharedPtr<FChannelPackerPreset> InDefaultPreset)
@@ -322,51 +449,75 @@ void FTextureChannelUnpacker::UpdatePreview()
         return;
     }
 
-    // Extract source data on the Game Thread.
-    FTextureRawData Raw = ExtractTextureSourceData(SourceTex);
-    if (!Raw.bIsValid)
-    {
-        if (!Raw.ErrorMessage.IsEmpty())
-        {
-            ShowNotification(Raw.ErrorMessage, false);
-        }
-        return;
-    }
+#if WITH_EDITORONLY_DATA
+    const int32 SrcW = SourceTex->Source.GetSizeX();
+    const int32 SrcH = SourceTex->Source.GetSizeY();
+    const ETextureSourceFormat Format = SourceTex->Source.GetFormat();
 
-    // Uniform-value detection on the full-resolution data. Channels that hold a single
-    // value are likely unused, so they are excluded from export by default (the user can
-    // re-check the box to export them anyway).
-    for (int32 Index = 0; Index < 4; ++Index)
+    if (SrcW < 1 || SrcH < 1)
     {
-        bChannelUniform[Index] = ComputeChannelUniformValue(Raw, GUnpackChannelOrder[Index], ChannelUniformValue[Index]);
-        bExportChannel[Index] = !bChannelUniform[Index];
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorInvalidUnpackSource"),
+            TEXT("The source texture has no valid source data."),
+            TEXT("ソーステクスチャに有効なソースデータがありません。")), false);
+        return;
     }
 
     // Derive a small preview resolution from the source aspect ratio so the preview stays
     // cheap to build even for very large sources (e.g. 16K).
     const int32 PreviewMaxDim = 256;
-    const float Scale = FMath::Min(1.0f, (float)PreviewMaxDim / (float)FMath::Max(Raw.Width, Raw.Height));
-    const int32 W = FMath::Max(1, FMath::RoundToInt(Raw.Width * Scale));
-    const int32 H = FMath::Max(1, FMath::RoundToInt(Raw.Height * Scale));
+    const float Scale = FMath::Min(1.0f, (float)PreviewMaxDim / (float)FMath::Max(SrcW, SrcH));
+    const int32 W = FMath::Max(1, FMath::RoundToInt(SrcW * Scale));
+    const int32 H = FMath::Max(1, FMath::RoundToInt(SrcH * Scale));
     const int32 NumPixels = W * H;
 
-    // Process all four channels in parallel. The raw data is shared between the tasks,
-    // so pass bCanConsumeInput=false to keep every task read-only.
-    FTextureProcessResult Results[4];
-    ParallelFor(4, [&Raw, &Results, W, H](int32 Index)
+    // Read straight from the locked mip: no full-resolution copy and no FColor buffers, so
+    // selecting a large texture costs only the four small preview arrays. One pass produces
+    // both the downsampled previews and the exact uniform-channel verdicts.
+    uint8* Locked = SourceTex->Source.LockMip(0);
+    if (!Locked)
     {
-        Results[Index] = ProcessTextureSourceData(Raw, W, H, GUnpackChannelOrder[Index], /*bCanConsumeInput=*/false);
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorLockFailed"),
+            TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
+            TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")), false);
+        return;
+    }
+
+    TArray<uint8> Channels[4];
+    bool bUniform[4] = { false, false, false, false };
+    uint8 UniformValue[4] = { 0, 0, 0, 0 };
+
+    const bool bFormatSupported = VisitChannelSampler(Locked, Format, [&](auto&& Sample)
+    {
+        ScanAndDownsampleChannels(Sample, SrcW, SrcH, W, H, Channels, bUniform, UniformValue);
     });
+
+    SourceTex->Source.UnlockMip(0);
+
+    if (!bFormatSupported)
+    {
+        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)Format, *SourceTex->GetName());
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorUnsupportedFormat"),
+            TEXT("Texture format not supported. Please convert to PNG or TGA."),
+            TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")), false);
+        return;
+    }
+
+    // Channels that hold a single value are likely unused, so they are excluded from export
+    // by default (the user can re-check the box to export them anyway).
+    for (int32 Index = 0; Index < 4; ++Index)
+    {
+        bChannelUniform[Index] = bUniform[Index];
+        ChannelUniformValue[Index] = UniformValue[Index];
+        bExportChannel[Index] = !bUniform[Index];
+    }
 
     // Build one grayscale transient texture per channel.
     for (int32 Index = 0; Index < 4; ++Index)
     {
-        TArray<uint8>& Data = Results[Index].ProcessedData;
-        if (Data.Num() != NumPixels)
-        {
-            // Fallback matching packing defaults: RGB to black, Alpha to opaque.
-            Data.Init(Index == 3 ? 255 : 0, NumPixels);
-        }
+        const TArray<uint8>& Data = Channels[Index];
 
         // Replicate the channel value across B/G/R; the displayed alpha is forced opaque
         // so the preview is never blended against the panel background.
@@ -419,6 +570,9 @@ void FTextureChannelUnpacker::UpdatePreview()
     PreviewDisplayHeight = FMath::Max(1, FMath::RoundToInt(H * DisplayScale));
 
     bPreviewValid = true;
+#else
+    UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+#endif
 }
 
 FReply FTextureChannelUnpacker::OnExtractClicked()
@@ -546,8 +700,8 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
         }
     }
 
-    // Progress: 1 extract + 1 process + one frame per saved channel.
-    FScopedSlowTask SlowTask((float)(2 + SelectedChannels.Num()), GetLocalizedMessage(
+    // Progress: 1 extract + one frame per saved channel.
+    FScopedSlowTask SlowTask((float)(1 + SelectedChannels.Num()), GetLocalizedMessage(
         TEXT("ProgressUnpacking"),
         TEXT("Unpacking Texture..."),
         TEXT("テクスチャをアンパック中...")
@@ -561,32 +715,7 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
     );
 
     // ---------------------------------------------------------
-    // STEP 1: Extract Raw Data from the Source (Game Thread)
-    // ---------------------------------------------------------
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressExtracting"),
-        TEXT("Extracting source data..."),
-        TEXT("ソースデータを抽出中...")
-    ));
-
-    FTextureRawData Raw = ExtractTextureSourceData(SourceTex);
-    if (!Raw.bIsValid)
-    {
-        ShowNotification(!Raw.ErrorMessage.IsEmpty() ? Raw.ErrorMessage : GetLocalizedMessage(
-            TEXT("ErrorUnpackExtractFailed"),
-            TEXT("Failed to read source texture data."),
-            TEXT("ソーステクスチャのデータを読み取れませんでした。")), false);
-        return FReply::Handled();
-    }
-
-    if (SlowTask.ShouldCancel())
-    {
-        ShowNotification(CancelMsg, false);
-        return FReply::Handled();
-    }
-
-    // ---------------------------------------------------------
-    // STEP 2: Extract Channels in Parallel (Background Threads)
+    // STEP 1: Extract the Selected Channels
     // ---------------------------------------------------------
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
         TEXT("ProgressProcessingChannels"),
@@ -594,28 +723,63 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
         TEXT("チャンネルを抽出中...")
     ));
 
-    TArray<FTextureProcessResult> Results;
-    Results.SetNum(SelectedChannels.Num());
+    // Output resolution always matches the source, so no resize (and therefore no FColor
+    // conversion) is needed: each channel is read straight out of the locked mip. The mip
+    // stays locked across the extraction, which costs nothing extra in memory — only the
+    // one-byte-per-pixel output buffers are allocated.
+    TArray<TArray<uint8>> ChannelData;
+    ChannelData.SetNum(SelectedChannels.Num());
 
-    // The raw data is shared between the tasks, so pass bCanConsumeInput=false
-    // to keep every task read-only.
-    ParallelFor(SelectedChannels.Num(), [&Raw, &Results, &SelectedChannels](int32 Index)
+    // Set once the channels have actually been read. Stays false in non-editor builds, where
+    // Source is unavailable; checked after the guarded block so neither path has dead code.
+    bool bChannelsExtracted = false;
+
+#if WITH_EDITORONLY_DATA
+    const ETextureSourceFormat SourceFormat = SourceTex->Source.GetFormat();
+    const int64 NumSourcePixels = (int64)SrcWidth * (int64)SrcHeight;
+
+    uint8* Locked = SourceTex->Source.LockMip(0);
+    if (!Locked)
     {
-        Results[Index] = ProcessTextureSourceData(Raw, Raw.Width, Raw.Height, GUnpackChannelOrder[SelectedChannels[Index]], /*bCanConsumeInput=*/false);
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorLockFailed"),
+            TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
+            TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")), false);
+        return FReply::Handled();
+    }
+
+    const bool bFormatSupported = VisitChannelSampler(Locked, SourceFormat, [&](auto&& Sample)
+    {
+        // One channel at a time; each extraction parallelizes internally over pixels.
+        for (int32 Index = 0; Index < SelectedChannels.Num(); ++Index)
+        {
+            ExtractChannelBytes(Sample, SelectedChannels[Index], NumSourcePixels, ChannelData[Index]);
+        }
     });
 
-    // A single shared source either succeeds for all channels or fails for all
-    // (e.g. unsupported format), so report the first error and abort.
-    for (const FTextureProcessResult& Result : Results)
+    SourceTex->Source.UnlockMip(0);
+
+    if (!bFormatSupported)
     {
-        if (!Result.bSuccess)
-        {
-            if (!Result.ErrorMessage.IsEmpty())
-            {
-                ShowNotification(Result.ErrorMessage, false);
-            }
-            return FReply::Handled();
-        }
+        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SourceFormat, *SourceTex->GetName());
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorUnsupportedFormat"),
+            TEXT("Texture format not supported. Please convert to PNG or TGA."),
+            TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")), false);
+        return FReply::Handled();
+    }
+
+    bChannelsExtracted = true;
+#endif
+
+    if (!bChannelsExtracted)
+    {
+        UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+        ShowNotification(GetLocalizedMessage(
+            TEXT("ErrorNoEditorData"),
+            TEXT("This plugin requires Editor-only data to function. Ensure the project is built with editor support."),
+            TEXT("このプラグインはエディター専用データが必要です。プロジェクトがエディターサポート付きでビルドされていることを確認してください。")), false);
+        return FReply::Handled();
     }
 
     if (SlowTask.ShouldCancel())
@@ -625,7 +789,7 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
     }
 
     // ---------------------------------------------------------
-    // STEP 3: Write One Grayscale Asset per Channel (Game Thread)
+    // STEP 2: Write One Grayscale Asset per Channel (Game Thread)
     // ---------------------------------------------------------
     int32 SavedCount = 0;
     bool bCancelled = false;
@@ -647,11 +811,11 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
             break;
         }
 
-        const TArray<uint8>& Data = Results[SelectionIndex].ProcessedData;
-        if (Data.Num() != Raw.Width * Raw.Height)
+        const TArray<uint8>& Data = ChannelData[SelectionIndex];
+        if ((int64)Data.Num() != (int64)SrcWidth * (int64)SrcHeight)
         {
-            UE_LOG(LogTexturePacker, Error, TEXT("Unexpected channel data size for %s (%d, expected %d). Skipping."),
-                *AssetName, Data.Num(), Raw.Width * Raw.Height);
+            UE_LOG(LogTexturePacker, Error, TEXT("Unexpected channel data size for %s (%d, expected %lld). Skipping."),
+                *AssetName, Data.Num(), (int64)SrcWidth * (int64)SrcHeight);
             continue;
         }
 
@@ -670,7 +834,7 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
         UTexture2D* NewTexture = NewObject<UTexture2D>(Package, FName(*AssetName), RF_Public | RF_Standalone | RF_MarkAsRootSet);
 
 #if WITH_EDITORONLY_DATA
-        NewTexture->Source.Init(Raw.Width, Raw.Height, 1, 1, TSF_G8);
+        NewTexture->Source.Init(SrcWidth, SrcHeight, 1, 1, TSF_G8);
         uint8* MipData = NewTexture->Source.LockMip(0);
         if (MipData)
         {

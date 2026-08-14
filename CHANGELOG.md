@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Smart Naming**: The output base name is derived from the source texture name with known packed suffixes stripped (e.g. `T_Rock_ORM` → `T_Rock`), and each channel appends a preset-driven suffix — with the ORM preset, `T_Rock_AO` / `T_Rock_Roughness` / `T_Rock_Metallic`. The base name can be edited manually.
   - **Preset Integration**: Presets (built-in and user-created) now carry per-channel unpack suffixes, selectable from a Preset dropdown in the Unpack tab. Older preset files load with the missing fields defaulting to `_R`/`_G`/`_B`/`_A`.
   - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
+  - **Streaming, allocation-free reads**: Both the preview and the extraction read straight out of the locked source mip — no full-resolution copy and no intermediate `FColor` buffers. The preview walks the source exactly once, box-downsampling all four channels and detecting uniform channels in the same pass, so its allocation is ~256 KB no matter how large the source is (selecting a 16K RGBA32F texture no longer spikes gigabytes). Extraction peaks at one byte per pixel per selected channel, independent of the source format. As a side effect, sources larger than 2 GB (e.g. 16K RGBA32F) can now be unpacked.
   - The Unpack tab reuses the existing UX: overwrite confirmation (listing all affected assets), cancellable progress dialog, toast notifications, memory warning above 8K, and full English/Japanese localization.
+  - Note: `Grayscale` compression is uncompressed `PF_G8`, so each extracted 8K channel costs roughly 67 MB of video memory plus mips once created.
 
 ## [1.7.0] - 2026-06-08
 

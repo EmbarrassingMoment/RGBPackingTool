@@ -183,7 +183,7 @@ FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     return Result;
 }
 
-FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel, bool bCanConsumeInput)
+FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel)
 {
     FTextureProcessResult Result;
     // Default to zero-filled array
@@ -204,17 +204,9 @@ FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 Tar
     {
         if (Input.Format == TSF_G8)
         {
-            // Grayscale input needs no conversion. Channel selection is moot for
-            // single-channel data. Move (zero-copy) when we own the input exclusively,
-            // copy when the input is shared between concurrent callers.
-            if (bCanConsumeInput)
-            {
-                Result.ProcessedData = MoveTemp(Input.RawData);
-            }
-            else
-            {
-                Result.ProcessedData = Input.RawData;
-            }
+            // Direct move for Grayscale input (zero-copy optimization).
+            // Channel selection is moot for single-channel data.
+            Result.ProcessedData = MoveTemp(Input.RawData);
             return Result;
         }
         else if (Input.Format == TSF_BGRA8)

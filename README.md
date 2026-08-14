@@ -38,6 +38,7 @@
   - **Unused Channel Detection**: Channels whose pixels all share one value (e.g. an alpha that is uniformly 255) are flagged with a "Uniform" badge and excluded from export automatically (re-check the box to export them anyway).
   - **Smart Naming**: The base name is derived from the source name with known packed suffixes stripped (`T_Rock_ORM` → `T_Rock`), and each channel appends a preset-driven suffix (with ORM: `_AO`, `_Roughness`, `_Metallic`).
   - **Preset-Driven Suffixes**: Presets carry per-channel unpack suffixes; older preset files load with `_R`/`_G`/`_B`/`_A` defaults.
+  - **Memory-Efficient**: The preview and the extraction read straight from the source without full-resolution intermediate buffers, so previewing a 16K texture costs a few hundred KB rather than gigabytes.
   - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
 - **User Interface**:
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.

@@ -124,10 +124,7 @@ namespace TextureChannelPackerUtils
      * @param TargetWidth The target width for the output.
      * @param TargetHeight The target height for the output.
      * @param SourceChannel Which channel of the input to read (R/G/B/A). Ignored for single-channel formats.
-     * @param bCanConsumeInput If true (default), the function may steal Input.RawData as a zero-copy
-     *        optimization when no conversion is needed. Pass false when the same FTextureRawData is
-     *        shared by multiple concurrent calls (e.g. unpacking all channels of one texture).
      * @return FTextureProcessResult The processed single-channel 8-bit data.
      */
-    FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel, bool bCanConsumeInput = true);
+    FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel);
 }

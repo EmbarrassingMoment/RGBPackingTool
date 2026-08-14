@@ -62,7 +62,7 @@ Owns all Unpack tab state and UI. Created in `StartupModule` and kept alive unti
 #### Key Methods
 
 *   **`CreateContent`**: Builds the Unpack tab Slate UI (preset dropdown, source picker, 2×2 channel grid, output settings, Unpack button).
-*   **`UpdatePreview`**: Extracts the source once, runs uniform-value detection per channel on the full-resolution raw data (early-exits on the first differing pixel), auto-unchecks uniform ("possibly unused") channels, then builds four grayscale preview textures at a capped resolution.
+*   **`UpdatePreview`**: Locks Mip 0 and walks it exactly once, box-downsampling all four channels into the small preview buffers while detecting uniform channels in the same pass, then builds four grayscale preview textures. No full-resolution copy or `FColor` buffer is allocated (see *Memory Behavior* below).
 *   **`OnExtractClicked`**: Validates inputs, confirms overwrites (single dialog listing all affected assets), then writes one `TSF_G8` texture asset per selected channel (`TC_Grayscale`, `SRGB = false`) at the source resolution.
 *   **`AutoGenerateBaseName`**: Strips any known packed suffix (every preset's `FileNameSuffix`) from the source name and enforces the `T_` prefix. Per-channel output names are `<Base><UnpackSuffix>` using the selected preset's suffixes.
 
@@ -119,11 +119,22 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
 
 ### Unpack Flow
 
-The unpack pipeline (`FTextureChannelUnpacker::OnExtractClicked`) reuses the same extraction/processing primitives:
+The unpack path does not go through `FTextureRawData` / `ProcessTextureSourceData`. Because the output resolution always equals the source resolution, no resize — and therefore no `FColor` intermediate — is required, so channels are read straight out of the locked mip:
 
-1.  **Extraction (Game Thread)**: `ExtractTextureSourceData` is called once for the single source texture.
-2.  **Channel Extraction (Parallel Threads)**: `ProcessTextureSourceData` runs once per selected channel at the source resolution. Because all tasks share one `FTextureRawData`, they pass `bCanConsumeInput = false` so the same-resolution `TSF_G8` fast path copies instead of moving the shared buffer (the Pack flow keeps the zero-copy move, since each channel there owns its own raw data).
+1.  **Sampler Dispatch**: `VisitChannelSampler` switches on `ETextureSourceFormat` once and hands the caller a `uint8 (int64 PixelIndex, int32 ChannelIndex)` sampler that converts to 8-bit inline. Dispatching outside the pixel loop keeps the inner loop branch-free, and 64-bit pixel indices mean sources larger than 2 GB (e.g. 16K `RGBA32F`) are handled without an intermediate buffer.
+2.  **Extraction (Parallel Threads)**: `ExtractChannelBytes` fills one byte-per-pixel array per selected channel via `ParallelFor`, reading through the sampler. The mip stays locked for the duration.
 3.  **Asset Creation (Game Thread)**: For each selected channel, a `TSF_G8` source is initialized, the channel bytes are memcpy'd in, and the asset is finalized with `TC_Grayscale` compression and `SRGB = false`.
+
+Single-channel source formats (`G8`/`G16`/`R16F`/`R32F`) report their lone value on R/G/B and an opaque `255` on Alpha, matching how the packing pipeline widens them to `FColor`. (`ProcessTextureSourceData` deliberately keeps its own rule of returning the luminance for *any* requested channel — the Pack tab relies on that when a grayscale mask is assigned to the Alpha slot.)
+
+### Memory Behavior
+
+Both unpack paths are designed so peak memory does not scale with the source's bytes-per-pixel:
+
+*   **Preview**: `ScanAndDownsampleChannels` visits every source pixel exactly once, accumulating box-filter sums directly into the four `DstW*DstH` output arrays. Work is split across destination rows; each row owns a disjoint band of source rows and writes only its own output slice, so no synchronization or merging is needed. Uniform detection is folded into the same pass and stays exact (per-row verdicts are merged afterwards) — averaging alone could otherwise hide a single differing pixel. Allocation is ~256 KB regardless of source size, so selecting a 16K texture does not spike memory.
+*   **Extraction**: peak is one byte per pixel per selected channel (e.g. 4 × 67 MB for a fully unpacked 8K source), independent of the source format.
+
+Note that the *outputs* still consume VRAM once created: `TC_Grayscale` yields uncompressed `PF_G8`, so an 8K channel is ~67 MB plus mips.
 
 ## Extension Points
 
