@@ -2,9 +2,14 @@
 """Generates the test textures used to verify TextureChannelPacker.
 
 Pure standard library (zlib + struct), so it runs anywhere Python 3 does.
-Run from this directory to regenerate every PNG:
+Run from this directory to regenerate the standard PNGs:
 
     python3 generate_test_textures.py
+
+The 16384x16384 stress-test textures are not built by default (they take a
+while and are not needed for everyday checks). Add --huge for those:
+
+    python3 generate_test_textures.py --huge
 
 See README.md for what each texture is meant to exercise.
 """
@@ -12,6 +17,7 @@ See README.md for what each texture is meant to exercise.
 import math
 import os
 import struct
+import sys
 import zlib
 
 # Colour types from the PNG spec.
@@ -34,6 +40,52 @@ def write_png(path, width, height, rows, color_type, bit_depth=8):
         f.write(b"\x89PNG\r\n\x1a\n")
         f.write(chunk(b"IHDR", ihdr))
         f.write(chunk(b"IDAT", zlib.compress(raw, 9)))
+        f.write(chunk(b"IEND", b""))
+
+
+def write_png_streaming(path, width, height, row_iter, color_type, bit_depth=8, level=1):
+    """Writes a PNG without ever holding the whole image in memory.
+
+    Scanlines are pulled from `row_iter` and fed through an incremental zlib
+    compressor, emitting an IDAT chunk per block (the PNG spec allows any number
+    of IDAT chunks). Peak memory is a few MB regardless of image size, which is
+    what makes the 16K x 16K textures (1 GiB of raw RGBA) practical to build.
+
+    Level 1 is used by default: the synthetic patterns here are so repetitive
+    that the higher levels cost a lot of time for almost no size gain.
+    """
+
+    def chunk(tag, payload):
+        data = tag + payload
+        return struct.pack(">I", len(payload)) + data + struct.pack(">I", zlib.crc32(data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, bit_depth, color_type, 0, 0, 0)
+    compressor = zlib.compressobj(level)
+    pending = bytearray()
+    flush_at = 4 * 1024 * 1024
+
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        f.write(chunk(b"IHDR", ihdr))
+
+        for row in row_iter:
+            pending += b"\x00"  # filter type 0 (None)
+            pending += row
+            if len(pending) >= flush_at:
+                block = compressor.compress(bytes(pending))
+                pending.clear()
+                if block:
+                    f.write(chunk(b"IDAT", block))
+
+        if pending:
+            block = compressor.compress(bytes(pending))
+            if block:
+                f.write(chunk(b"IDAT", block))
+
+        tail = compressor.flush()
+        if tail:
+            f.write(chunk(b"IDAT", tail))
+
         f.write(chunk(b"IEND", b""))
 
 
@@ -146,8 +198,68 @@ def build_gray16(path, width, height, fn16):
     print(f"  {os.path.basename(path):<38} {width}x{height} Gray16")
 
 
+def build_rgba_max(path, size=16384):
+    """16384x16384 RGBA8 — the tool's maximum supported dimensions.
+
+    Source data is 16384*16384*4 = 1 GiB, which still fits a 32-bit byte count,
+    so this exercises the full 16K processing path rather than the oversize
+    rejection. (Tripping that rejection needs more than 2 GiB of source, i.e. a
+    16K RGBA32F at 4 GiB — see README.)
+
+    Rows are assembled with extended-slice assignment on a bytearray (a C-level
+    copy per channel) instead of a per-pixel Python loop, which is the
+    difference between seconds and hours at this size.
+    """
+    w = h = size
+    block = w // 16
+
+    ramp = bytes(x * 255 // (w - 1) for x in range(w))                              # R: horizontal ramp
+    checker_even = bytes(255 if (x // block) % 2 == 0 else 0 for x in range(w))     # G: coarse checkerboard
+    checker_odd = bytes(255 - value for value in checker_even)
+    opaque = b"\xff" * w                                                            # A: constant
+
+    def rows():
+        row = bytearray(w * 4)
+        row[0::4] = ramp
+        row[3::4] = opaque
+        for y in range(h):
+            row[1::4] = checker_even if (y // block) % 2 == 0 else checker_odd
+            row[2::4] = bytes((y * 255 // (h - 1),)) * w                            # B: vertical ramp
+            # Safe to hand out the buffer itself: the writer copies immediately.
+            yield row
+
+    write_png_streaming(path, w, h, rows(), COLOR_RGBA, 8)
+    print(f"  {os.path.basename(path):<38} {w}x{h} RGBA8   ({os.path.getsize(path) / 1024 / 1024:.1f} MB on disk)")
+
+
+def build_gray_max(path, size=16384):
+    """16384x16384 Gray8 — 256 MB of source data, i.e. large but within int32.
+
+    Unlike the RGBA one this can be run end to end through the packer, so it
+    tests that 16K actually works rather than that it is rejected cleanly.
+    """
+    w = h = size
+    ramp = bytes(x * 255 // (w - 1) for x in range(w))
+
+    def rows():
+        for y in range(h):
+            offset = y * 255 // (h - 1)
+            # Diagonal gradient expressed as a 256-entry remap of the horizontal
+            # ramp, so each row is one C-level translate instead of 16384 steps.
+            yield ramp.translate(bytes((value + offset) // 2 for value in range(256)))
+
+    write_png_streaming(path, w, h, rows(), COLOR_GRAY, 8)
+    print(f"  {os.path.basename(path):<38} {w}x{h} Gray8   ({os.path.getsize(path) / 1024 / 1024:.1f} MB on disk)")
+
+
 def main():
     out = os.path.dirname(os.path.abspath(__file__))
+
+    if "--huge" in sys.argv:
+        print("Stress-test textures (16384x16384) — this takes a few minutes:")
+        build_rgba_max(os.path.join(out, "T_StressTest_16K_ORM.png"))
+        build_gray_max(os.path.join(out, "T_StressTest_16K_Gray.png"))
+        return
 
     print("Unpack test textures:")
 
