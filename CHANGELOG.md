@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.0] - 2026-08-14
+## [1.8.0] - 2026-08-15
 
 ### Added
 - **Unpack Mode**: The tool window now has a **Pack / Unpack** switcher at the top. The new Unpack tab does the reverse of packing: it splits a packed RGBA texture into separate grayscale textures, one asset per channel.
