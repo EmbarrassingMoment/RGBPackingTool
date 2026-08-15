@@ -12,6 +12,7 @@ class FSpawnTabArgs;
 class UTexture2D;
 struct FSlateBrush;
 template <typename OptionType> class SComboBox;
+class FTextureChannelUnpacker;
 
 /**
  * @enum ESourceChannel
@@ -120,6 +121,15 @@ struct FChannelPackerPreset
     ESourceChannel DefaultSourceChannelB = ESourceChannel::Red;
     ESourceChannel DefaultSourceChannelA = ESourceChannel::Red;
 
+    /**
+     * Suffixes appended to per-channel output filenames when unpacking (e.g., "_AO", "_Roughness").
+     * Fields missing from older preset files default to "_R"/"_G"/"_B"/"_A".
+     */
+    FString UnpackSuffixR = TEXT("_R");
+    FString UnpackSuffixG = TEXT("_G");
+    FString UnpackSuffixB = TEXT("_B");
+    FString UnpackSuffixA = TEXT("_A");
+
     /** Serializes this preset to a JSON object. */
     TSharedPtr<FJsonObject> ToJson() const;
 
@@ -136,7 +146,9 @@ struct FChannelPackerPreset
  *
  * This class handles the initialization and shutdown of the module, manages the UI dock tab,
  * and coordinates the texture packing process. It serves as the central hub for user interaction
- * (selecting textures, settings) and executing the packing logic.
+ * (selecting textures, settings) and executing the packing logic. The dock tab hosts two modes
+ * switched by a segmented control: Pack (owned by this class) and Unpack (owned by
+ * FTextureChannelUnpacker).
  */
 class FTextureChannelPackerModule : public IModuleInterface
 {
@@ -384,4 +396,16 @@ private:
      * instantly without re-reading the source textures.
      */
     TArray<uint8> PreviewChannels[4];
+
+    // ========== Unpack ==========
+
+    /**
+     * Implements the "Unpack" tab (packed texture -> per-channel grayscale assets).
+     * Created in StartupModule and kept alive until ShutdownModule so its widget
+     * lambdas can safely capture the raw pointer.
+     */
+    TSharedPtr<FTextureChannelUnpacker> Unpacker;
+
+    /** Index of the active mode tab (0 = Pack, 1 = Unpack). */
+    int32 ActiveTabIndex = 0;
 };

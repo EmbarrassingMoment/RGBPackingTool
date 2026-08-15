@@ -7,6 +7,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-15
+
+### Added
+- **Unpack Mode**: The tool window now has a **Pack / Unpack** switcher at the top. The new Unpack tab does the reverse of packing: it splits a packed RGBA texture into separate grayscale textures, one asset per channel.
+  - **Instant Channel Preview**: Selecting a source texture immediately shows its R/G/B/A contents as a 2×2 grid of grayscale previews (capped to a small resolution, so it stays fast even for 16K sources).
+  - **Per-Channel Export Toggles**: Each channel has a checkbox controlling whether it is exported as an asset.
+  - **Unused Channel Detection**: Channels whose pixels all share a single value (e.g. an alpha that is uniformly 255) are flagged with a "Uniform" badge and automatically excluded from export. Re-check the box to export them anyway.
+  - **Smart Naming**: The output base name is derived from the source texture name with known packed suffixes stripped (e.g. `T_Rock_ORM` → `T_Rock`), and each channel appends a preset-driven suffix — with the ORM preset, `T_Rock_AO` / `T_Rock_Roughness` / `T_Rock_Metallic`. The base name can be edited manually.
+  - **Preset Integration**: Presets (built-in and user-created) now carry per-channel unpack suffixes, selectable from a Preset dropdown in the Unpack tab. Older preset files load with the missing fields defaulting to `_R`/`_G`/`_B`/`_A`.
+  - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
+  - **Streaming, allocation-free reads**: Both the preview and the extraction read straight out of the locked source mip — no full-resolution copy and no intermediate `FColor` buffers. The preview walks the source exactly once, box-downsampling all four channels and detecting uniform channels in the same pass, so its allocation is ~256 KB no matter how large the source is (selecting a 16K RGBA32F texture no longer spikes gigabytes). Extraction peaks at one byte per pixel per selected channel, independent of the source format. As a side effect, sources larger than 2 GB (e.g. 16K RGBA32F) can now be unpacked.
+  - The Unpack tab reuses the existing UX: overwrite confirmation (listing all affected assets), cancellable progress dialog, toast notifications, memory warning above 8K, and full English/Japanese localization.
+  - Note: `Grayscale` compression is uncompressed `PF_G8`, so each extracted 8K channel costs roughly 67 MB of video memory plus mips once created.
+
+### Changed
+- **Unreal Engine 5.8**: The sample project now targets UE 5.8 (`EngineAssociation`), and the plugin's `EngineVersion` was raised to `5.8.0`. Supported versions are now 5.5 / 5.6 / 5.7 / 5.8.
+
 ## [1.7.0] - 2026-06-08
 
 ### Added

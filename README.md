@@ -2,10 +2,10 @@
 
 # TextureChannelPacker
 
-[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.7.0-green?style=for-the-badge)](CHANGELOG.md)
+[![Available on Fab](https://img.shields.io/badge/Available_on-Fab-0078FF?style=for-the-badge&logo=unrealengine&logoColor=white)](https://www.fab.com/listings/7b231ecc-079f-45dc-9b8e-45dacc6b0771) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE) [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.5_%7C_5.6_%7C_5.7_%7C_5.8-blue?style=for-the-badge&logo=unrealengine)](https://www.unrealengine.com) [![Platform](https://img.shields.io/badge/Platform-Win64_%7C_Mac_%7C_Linux-lightgrey?style=for-the-badge)](RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin) [![Version](https://img.shields.io/badge/Version-1.8.0-green?style=for-the-badge)](CHANGELOG.md)
 [![Sponsor](https://img.shields.io/badge/Sponsor-EmbarrassingMoment-ff69b4?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/EmbarrassingMoment)
 
-**TextureChannelPacker** is an Unreal Engine 5.7 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures.
+**TextureChannelPacker** is an Unreal Engine 5.8 plugin designed to efficiently pack separate grayscale textures into the Red, Green, Blue, and Alpha channels of a single output texture. This is commonly used for creating ORM (Occlusion, Roughness, Metallic) maps or other channel-packed textures. It can also do the reverse: the **Unpack** mode splits a packed texture back into separate per-channel grayscale textures.
 
 >  **First time? Check out the [Quick Start Guide](QUICK_START.md) to get started in seconds!**
 
@@ -32,6 +32,14 @@
 - **High Performance**:
   - Utilizes **Parallel Processing** (multi-threading) to significantly speed up texture resizing and conversion.
 - **Live Preview**: A Preview panel shows a low-resolution composite of the packed result before you generate an asset. Click **Update Preview** to reflect the current inputs, invert flags, and source-channel selections. A **View** dropdown switches between the RGB composite and any single channel (R/G/B/A) shown as grayscale, so data packed into Green/Blue/Alpha can be inspected individually (switching is instant and does not re-read the textures). The preview is capped to a small resolution (so it stays fast even for 16K targets) and renders linear (sRGB off) to match the generated asset.
+- **Unpack Mode (Reverse Packing)**: A **Pack / Unpack** switcher at the top of the tool window toggles between the two workflows. The Unpack tab splits a packed RGBA texture into separate grayscale assets:
+  - **Instant Channel Preview**: Selecting a source texture immediately shows its R/G/B/A contents as a 2×2 grid of grayscale previews.
+  - **Per-Channel Export Toggles**: Choose which channels are exported as assets.
+  - **Unused Channel Detection**: Channels whose pixels all share one value (e.g. an alpha that is uniformly 255) are flagged with a "Uniform" badge and excluded from export automatically (re-check the box to export them anyway).
+  - **Smart Naming**: The base name is derived from the source name with known packed suffixes stripped (`T_Rock_ORM` → `T_Rock`), and each channel appends a preset-driven suffix (with ORM: `_AO`, `_Roughness`, `_Metallic`).
+  - **Preset-Driven Suffixes**: Presets carry per-channel unpack suffixes; older preset files load with `_R`/`_G`/`_B`/`_A` defaults.
+  - **Memory-Efficient**: The preview and the extraction read straight from the source without full-resolution intermediate buffers, so previewing a 16K texture costs a few hundred KB rather than gigabytes.
+  - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
 - **User Interface**:
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Cancellable Progress**: A progress dialog with a cancel button appears during generation, allowing you to abort long operations.
@@ -42,7 +50,7 @@
 
 ## Requirements
 
-- **Unreal Engine 5.5+** (Developed and tested on 5.7)
+- **Unreal Engine 5.5+** (Developed and tested on 5.8)
 - C++ Project (to compile the plugin)
 
 ## Why use this tool?
@@ -134,6 +142,28 @@ If you want the latest development version or need to modify the source code:
    - The tool will process the textures and create a new asset in the Content Browser at the specified location.
    - A Toast Notification will confirm if the operation was successful.
 
+## Unpacking a Packed Texture
+
+The **Unpack** tab reverses the packing process: it extracts the R/G/B/A channels of a packed texture into separate grayscale assets.
+
+1. **Switch to Unpack**:
+   Click **Unpack** in the switcher at the top of the tool window.
+
+2. **Select a Preset** (Optional):
+   The preset determines the per-channel output suffixes (e.g., ORM: `_AO` / `_Roughness` / `_Metallic`). Presets are managed in the Pack tab; the Unpack tab's selection is independent.
+
+3. **Select the Source Texture**:
+   Pick the packed texture to split. Its four channels are previewed immediately as a 2×2 grayscale grid.
+   - Channels detected as **Uniform** (every pixel has the same value, e.g. an unused alpha at 255) show a badge and are unchecked automatically.
+
+4. **Choose Channels & Output**:
+   - Use the checkbox on each channel cell to control which channels are exported.
+   - The **Base File Name** is auto-generated from the source name with known packed suffixes stripped (`T_Rock_ORM` → `T_Rock`); each cell shows the final asset name (e.g., `T_Rock_AO`). You can edit the base name manually.
+   - Set the **Output Path** by typing or via the folder icon.
+
+5. **Unpack**:
+   Click **Unpack Textures**. One grayscale (G8, `Grayscale` compression, `sRGB = false`) asset is created per selected channel at the source resolution. Existing assets are listed in a single overwrite-confirmation dialog before anything is written.
+
 ## Compression Settings Explained
 
 | Setting | Best For | Description |
@@ -174,7 +204,10 @@ If you want the latest development version or need to modify the source code:
 **A:** User-created presets are saved as individual JSON files in `<ProjectDir>/Saved/TextureChannelPacker/Presets/`. Copy these `.json` files to the same directory in other team members' projects. They will appear in the Preset dropdown the next time the editor is launched.
 
 **Q: What settings are saved in a preset?**
-**A:** A preset stores: channel label descriptions (in English and Japanese), the auto-filename suffix (e.g., `_ORM`), the default compression setting, and default invert flags for each channel. Input textures and output paths are **not** included in presets.
+**A:** A preset stores: channel label descriptions (in English and Japanese), the auto-filename suffix (e.g., `_ORM`), the default compression setting, default invert flags for each channel, default source-channel selections, and per-channel unpack suffixes (e.g., `_AO`). Input textures and output paths are **not** included in presets.
+
+**Q: Can I split a packed texture back into individual textures?**
+**A:** Yes. Switch to the **Unpack** tab, select the packed texture, and click **Unpack Textures**. Each selected channel is saved as a separate grayscale (G8) asset. Channels that appear unused (uniform value) are excluded automatically, and output names follow the preset's per-channel suffixes.
 
 ## License
 
