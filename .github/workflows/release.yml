@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)publish a release for (e.g. v1.8.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - name: Verify plugin version matches tag
+        run: |
+          VERSION="${TAG#v}"
+          UPLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('RGBPackingTool/Plugins/TextureChannelPacker/TextureChannelPacker.uplugin'))['VersionName'])")
+          if [ "$UPLUGIN_VERSION" != "$VERSION" ]; then
+            echo "::error::Tag $TAG does not match .uplugin VersionName $UPLUGIN_VERSION"
+            exit 1
+          fi
+
+      - name: Package plugin
+        run: |
+          VERSION="${TAG#v}"
+          (cd RGBPackingTool/Plugins && zip -r "$GITHUB_WORKSPACE/TextureChannelPacker-${VERSION}.zip" TextureChannelPacker)
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          VERSION="${TAG#v}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+            /^## \[/ { flag = 0 }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG section found for $VERSION; using default notes."
+            echo "Release $TAG" > release-notes.md
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${TAG#v}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading asset only."
+            gh release upload "$TAG" "TextureChannelPacker-${VERSION}.zip" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              --verify-tag \
+              "TextureChannelPacker-${VERSION}.zip"
+          fi
