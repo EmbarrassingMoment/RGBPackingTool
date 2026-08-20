@@ -83,6 +83,7 @@ struct FTextureRawData
     ETextureSourceFormat Format;// e.g., TSF_BGRA8, TSF_G8
     FString TextureName;        // For logging/debugging
     bool bIsValid;              // True if extraction succeeded
+    FText ErrorMessage;         // User-facing error message if extraction failed
 };
 ```
 
@@ -108,7 +109,7 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
 
 2.  **Processing (Parallel Threads)**
     -   `ParallelFor` is used to invoke `ProcessTextureSourceData` for all 4 channels concurrently.
-    -   **Format Conversion**: Supports `TSF_BGRA8` (extracts Red), `TSF_G8` (Grayscale), `TSF_G16` (16-bit Grayscale), and Float formats (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`). All are converted to 8-bit `uint8`.
+    -   **Format Conversion**: Supports `TSF_BGRA8` (extracts the selected source channel, Red by default), `TSF_G8` (Grayscale), `TSF_G16` (16-bit Grayscale), and Float formats (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`). All are converted to 8-bit `uint8`.
     -   **Resizing**: If the input resolution differs from the `TargetWidth` and `TargetHeight`, `FImageUtils::ImageResize` is used.
 
 3.  **Reconstruction (Game Thread)**
@@ -139,11 +140,16 @@ Note that the *outputs* still consume VRAM once created: `TC_Grayscale` yields u
 ## Extension Points
 
 ### Adding New Compression Settings
-Modify `StartupModule` to add new entries to `CompressionOptions`.
+Modify `StartupModule` to add a new `FCompressionOption` entry to `CompressionOptions`.
 ```cpp
-CompressionOptions.Add(MakeShared<FString>("My New Setting"));
+FCompressionOption MyOption;
+MyOption.InternalName = "MyNewSetting";
+MyOption.CompressionSetting = TC_HDR; // The TextureCompressionSettings enum to apply
+MyOption.DisplayNameEn = "My New Setting";
+MyOption.DisplayNameJa = "新しい設定";
+CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
 ```
-Then update `GetSelectedCompressionSettings` to return the appropriate `TextureCompressionSettings` enum.
+No further changes are needed: `GetSelectedCompressionSettings` returns the selected option's `CompressionSetting` member automatically.
 
 ### Supporting New Input Formats
 Update the `switch(Input.Format)` block in `ProcessTextureSourceData` to handle additional `ETextureSourceFormat` types (e.g., `TSF_BC1`).

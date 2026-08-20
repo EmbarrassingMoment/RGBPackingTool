@@ -13,7 +13,7 @@
 
 ## Features
 
-- **4-Channel Packing (RGBA)**: Takes up to four input textures and packs their Red channels into the output's Red, Green, Blue, and Alpha channels respectively.
+- **4-Channel Packing (RGBA)**: Takes up to four input textures and packs the selected channel of each (Red by default) into the output's Red, Green, Blue, and Alpha channels respectively.
 - **Auto-Resizing**: Automatically resizes input textures to match the specified target resolution using High-Quality Bilinear Interpolation (`FImageUtils`).
 - **Input Handling**:
   - Reads the selected channel from each source texture (defaults to **Red**).
@@ -107,7 +107,7 @@ If you want the latest development version or need to modify the source code:
 ## Usage Guide
 
 1. **Open the Tool**:
-   In the Unreal Editor, navigate to the main menu bar and select **Tools > Texture Packing**. This will open the Texture Channel Packer tab. You can dock this tab anywhere in your editor layout.
+   In the Unreal Editor, navigate to the main menu bar and select **Tools > Texture Channel Packer**. This will open the Texture Channel Packer tab. You can dock this tab anywhere in your editor layout.
 
 2. **Select a Preset** (Optional):
    At the top of the tool, choose a preset from the **Preset** dropdown to quickly configure channel labels and settings for your workflow:
@@ -116,7 +116,7 @@ If you want the latest development version or need to modify the source code:
    - **Custom**: Appears automatically when you manually change settings away from a preset.
 
    You can also:
-   - **Save As...**: Save the current configuration (channel labels, compression, invert flags, filename suffix) as a named preset.
+   - **Save As...**: Save the current configuration (channel labels, compression, invert flags, source-channel selections, filename suffix, and per-channel unpack suffixes) as a named preset.
    - **Delete**: Remove a user-created preset (built-in presets cannot be deleted).
 
    User presets are stored as JSON files in `<ProjectDir>/Saved/TextureChannelPacker/Presets/`. To share presets with your team, simply copy these files to other team members' projects.
@@ -192,7 +192,7 @@ The **Unpack** tab reverses the packing process: it extracts the R/G/B/A channel
 **A:** Yes, it now supports up to 16K resolution. The processing pipeline uses memory-optimized techniques to safely handle large assets. However, a memory consumption warning dialog will be displayed for resolutions exceeding 8K.
 
 **Q: What input formats are supported?**
-**A:** It supports standard formats (PNG, TGA, PSD) as well as **16-bit Grayscale** and **32-bit Float (e.g., EXR)** formats, ensuring high precision for Heightmaps and SDFs.
+**A:** It supports standard formats (PNG, TGA, JPEG, PSD) as well as **16-bit Grayscale** and **32-bit Float (e.g., EXR)** formats, ensuring high precision for Heightmaps and SDFs.
 
 **Q: What does the Invert checkbox do?**
 **A:** It flips the channel values (`255 - Value`). This is useful for converting between Roughness and Smoothness, or inverting any mask without needing to edit the source texture.
