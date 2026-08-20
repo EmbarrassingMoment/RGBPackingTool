@@ -83,6 +83,7 @@ struct FTextureRawData
     ETextureSourceFormat Format;// 例: TSF_BGRA8, TSF_G8
     FString TextureName;        // ログ/デバッグ用
     bool bIsValid;              // 抽出に成功した場合 true
+    FText ErrorMessage;         // 抽出失敗時のユーザー向けエラーメッセージ
 };
 ```
 
@@ -108,7 +109,7 @@ struct FTextureProcessResult
 
 2.  **処理 (並列スレッド)**
     -   `ParallelFor` を使用して、全4チャンネルに対して `ProcessTextureSourceData` を並行して実行します。
-    -   **フォーマット変換**: `TSF_BGRA8` (赤チャンネル抽出), `TSF_G8` (グレースケール), `TSF_G16` (16bit グレースケール), および Float 形式 (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`) をサポートします。すべて 8bit `uint8` に変換されます。
+    -   **フォーマット変換**: `TSF_BGRA8` (選択したソースチャンネルを抽出、デフォルトは Red), `TSF_G8` (グレースケール), `TSF_G16` (16bit グレースケール), および Float 形式 (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`) をサポートします。すべて 8bit `uint8` に変換されます。
     -   **リサイズ**: 入力解像度が `TargetWidth` や `TargetHeight` と異なる場合、`FImageUtils::ImageResize` が使用されます。
 
 3.  **再構築 (ゲームスレッド)**
@@ -139,11 +140,16 @@ struct FTextureProcessResult
 ## 拡張ポイント
 
 ### 新しい圧縮設定の追加
-`StartupModule` を修正して、`CompressionOptions` に新しいエントリを追加します。
+`StartupModule` を修正して、`CompressionOptions` に新しい `FCompressionOption` エントリを追加します。
 ```cpp
-CompressionOptions.Add(MakeShared<FString>("My New Setting"));
+FCompressionOption MyOption;
+MyOption.InternalName = "MyNewSetting";
+MyOption.CompressionSetting = TC_HDR; // 適用する TextureCompressionSettings 列挙値
+MyOption.DisplayNameEn = "My New Setting";
+MyOption.DisplayNameJa = "新しい設定";
+CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
 ```
-その後、`GetSelectedCompressionSettings` を更新して、適切な `TextureCompressionSettings` 列挙値を返すようにします。
+これ以外の変更は不要です。`GetSelectedCompressionSettings` は選択中オプションの `CompressionSetting` メンバーを自動的に返します。
 
 ### 新しい入力フォーマットのサポート
 `ProcessTextureSourceData` 内の `switch(Input.Format)` ブロックを更新し、追加の `ETextureSourceFormat` 型 (例: `TSF_BC1`) を処理できるようにします。
