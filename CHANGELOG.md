@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.8.1] - 2026-09-27
 
 ### Changed
 - **Pack reads inputs in place**: Packing and the pack preview no longer copy each input texture at full resolution. The source mips are locked read-only (`LockMipReadOnly`) and the workers read straight from them, so peak memory no longer scales with the input size and the copy step disappears entirely. Read-only locking also stops the tool from re-hashing and re-stamping the source GUID of every *input* asset it reads, which the previous write lock did on unlock (the Unpack tab now locks read-only as well).
