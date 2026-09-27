@@ -7,6 +7,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Pack reads inputs in place**: Packing and the pack preview no longer copy each input texture at full resolution. The source mips are locked read-only (`LockMipReadOnly`) and the workers read straight from them, so peak memory no longer scales with the input size and the copy step disappears entirely. Read-only locking also stops the tool from re-hashing and re-stamping the source GUID of every *input* asset it reads, which the previous write lock did on unlock (the Unpack tab now locks read-only as well).
+- **Single-channel resize**: When an input has to be resized, the selected channel is extracted first (1 byte per pixel) and only that channel is resized with `FImageCore::ResizeImage` (Box filter, multi-threaded), replacing the deprecated, single-threaded `FImageUtils::ImageResize` that resized all four channels as `FColor`. Output is a box average as before.
+- **Channel extraction** is now shared between Pack and Unpack (`VisitChannelSampler` / `ExtractChannelToG8`) and runs one task per row instead of one task per pixel.
+- **Phase timing**: The Pack and Preview steps log per-phase durations (`[Perf] ...`) to the Output Log under `LogTexturePacker`, and a `TextureChannelPacker.Perf.Pack` automation test benchmarks the pipeline with synthetic textures.
+- **Measured effect** (median of 3 runs, Ryzen 7 7700, UE 5.8, headless; excludes the engine's async texture build):
+
+  | Scenario | Before | After |
+  |---|---|---|
+  | Pack 4× BGRA8 4K → 4K | 262 ms | 56 ms |
+  | Pack 4× BGRA8 8K → 8K | 1121 ms | 205 ms |
+  | Pack 4× BGRA8 8K → 4K (resize) | 812 ms | 93 ms |
+  | Pack 4× G8 8K → 4K (resize) | 439 ms | 97 ms |
+  | Pack 1× RGBA32F 4K → 2K | 199 ms | 34 ms |
+  | Preview 4× BGRA8 8K | 620 ms | 46 ms |
+
+### Fixed
+- **Empty Alpha slot packed as 0**: An empty Alpha input produced a fully transparent (0) alpha channel instead of the documented opaque white (255), because the processing step returned a zero-filled buffer that bypassed the slot default. The preview had the same issue. Both now use the slot defaults (0 for R/G/B, 255 for Alpha).
+
 ## [1.8.0] - 2026-08-15
 
 ### Added

@@ -70,22 +70,23 @@ public:
 
 ### データ構造
 
-バックグラウンドスレッドから `UObject` のメソッド (例: `LockMip`) にアクセスせずにマルチスレッド処理をサポートするため、モジュールは `TextureChannelPackerUtils` 名前空間 (`TextureChannelPackerShared.h`) で定義された2つのヘルパー構造体を使用します。
+パックパスは入力ピクセルをその場で読み出し、フル解像度のコピーは一切行いません。ゲームスレッドとワーカースレッドの間でデータを受け渡すために、`TextureChannelPackerUtils` 名前空間 (`TextureChannelPackerShared.h`) で定義された2つのヘルパー構造体を使用します。
 
-#### `FTextureRawData`
-ゲームスレッドからワーカースレッドへ生のピクセルデータを転送するために使用されます。
+#### `FLockedTextureSource`
+入力テクスチャの Mip 0 に対する読み取り専用ビューです。`Lock`（ゲームスレッド）が寸法とフォーマットを検証して `LockMipReadOnly` でミップをロックし、`Release` またはデストラクタで解除します。その間、ワーカーは `Data` を直接読み出します（読み取りアクセスはエンジンのテクスチャスレッディング規則で許可されています）。
 ```cpp
-struct FTextureRawData
+struct FLockedTextureSource
 {
-    TArray<uint8> RawData;      // Mip 0 の生バイトデータ
+    const uint8* Data;          // ロック中の Mip 0 バイト列（Release まで有効）
     int32 Width;                // テクスチャの幅
     int32 Height;               // テクスチャの高さ
     ETextureSourceFormat Format;// 例: TSF_BGRA8, TSF_G8
     FString TextureName;        // ログ/デバッグ用
-    bool bIsValid;              // 抽出に成功した場合 true
-    FText ErrorMessage;         // 抽出失敗時のユーザー向けエラーメッセージ
+    bool bIsValid;              // ロックに成功した場合 true
+    FText ErrorMessage;         // ロック失敗時のユーザー向けエラーメッセージ
 };
 ```
+読み取りロックは再帰可能なので、同じテクスチャを複数スロットに割り当てても問題ありません。また読み取り専用ロックでは、書き込みロック後の `UnlockMip` が行うペイロードの再ハッシュやソース GUID の再生成が発生しないため、パック処理が入力アセットを変更することもなくなりました。
 
 #### `FTextureProcessResult`
 ワーカースレッドからゲームスレッドへ、処理済みの単一チャンネルデータを返すために使用されます。
@@ -102,15 +103,16 @@ struct FTextureProcessResult
 
 テクスチャ生成パイプライン (`CreateTexture`) は、応答性とスレッドセーフ性を考慮して設計されています。
 
-1.  **抽出 (ゲームスレッド)**
-    -   各入力 (R, G, B, A) に対して `ExtractTextureSourceData` が呼び出されます。
-    -   `UTexture2D` の `Source` ミップマップをロックし、生バイトデータを `FTextureRawData` に `Memcpy` します。
-    -   これにより、バックグラウンドスレッドを UObject の有効性チェックから分離します。
+1.  **ロック (ゲームスレッド)**
+    -   各入力 (R, G, B, A) に対して `FLockedTextureSource::Lock` が呼び出されます。
+    -   寸法とフォーマットを検証し、`UTexture2D` の `Source` ミップマップを読み取り専用でロックします。ピクセルデータはコピーしません。
 
 2.  **処理 (並列スレッド)**
     -   `ParallelFor` を使用して、全4チャンネルに対して `ProcessTextureSourceData` を並行して実行します。
-    -   **フォーマット変換**: `TSF_BGRA8` (選択したソースチャンネルを抽出、デフォルトは Red), `TSF_G8` (グレースケール), `TSF_G16` (16bit グレースケール), および Float 形式 (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`) をサポートします。すべて 8bit `uint8` に変換されます。
-    -   **リサイズ**: 入力解像度が `TargetWidth` や `TargetHeight` と異なる場合、`FImageUtils::ImageResize` が使用されます。
+    -   **チャンネル抽出**: `ExtractChannelToG8` が `VisitChannelSampler` を通してロック中のミップから選択チャンネルを直接読み出し（行ごとに1タスク、内側は素直なループ）、1バイト/ピクセルのバッファを生成します。`TSF_BGRA8` (選択したソースチャンネル、デフォルトは Red), `TSF_G8` (グレースケール), `TSF_G16` (16bit グレースケール), および Float 形式 (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`) をサポートします。すべて 8bit `uint8` に変換されます。
+    -   **リサイズ**: 入力解像度が `TargetWidth` や `TargetHeight` と異なる場合、抽出済みの 8bit チャンネルを `FImageCore::ResizeImage`（Box フィルタ、マルチスレッド）でリサイズします。フィルタはチャンネルごとに独立な線形演算なので抽出後にリサイズしても結果は同一で、4チャンネルを `FColor` のままリサイズする場合の 1/4 の計算量で済みます。
+    -   空のスロット（またはサポート外フォーマット）は空の結果を返し、再構築ステップがスロットのデフォルト値（R/G/B は 0、Alpha は 255）で埋めます。
+    -   4つの結果が揃った時点でソースのロックを解放します。
 
 3.  **再構築 (ゲームスレッド)**
     -   新しい `UTexture2D` がパッケージ内に作成 (または更新) されます。
@@ -120,13 +122,13 @@ struct FTextureProcessResult
 
 ### アンパックフロー
 
-アンパックパスは `FTextureRawData` / `ProcessTextureSourceData` を経由しません。出力解像度は常にソース解像度と一致するためリサイズが不要であり、したがって `FColor` の中間バッファも不要で、ロックしたミップから直接チャンネルを読み出します。
+アンパックパスは `ProcessTextureSourceData` を経由しません。出力解像度は常にソース解像度と一致するためリサイズが不要であり、`LockMipReadOnly` でロックしたミップから、パックパスと同じサンプラーを通してチャンネルを直接読み出します。
 
-1.  **サンプラーのディスパッチ**: `VisitChannelSampler` が `ETextureSourceFormat` で1回だけ分岐し、8bit へのインライン変換を行う `uint8 (int64 PixelIndex, int32 ChannelIndex)` 形式のサンプラーを呼び出し側に渡します。ピクセルループの外側で分岐することで内側のループから条件分岐を排除し、ピクセルインデックスが 64bit のため 2GB を超えるソース（例: 16K の `RGBA32F`）も中間バッファなしで扱えます。
+1.  **サンプラーのディスパッチ**: `VisitChannelSampler`（`TextureChannelPackerShared.h` で共有）が `ETextureSourceFormat` で1回だけ分岐し、8bit へのインライン変換を行う `uint8 (int64 PixelIndex, int32 ChannelIndex)` 形式のサンプラーを呼び出し側に渡します。ピクセルループの外側で分岐することで内側のループから条件分岐を排除し、ピクセルインデックスが 64bit のため 2GB を超えるソース（例: 16K の `RGBA32F`）も中間バッファなしで扱えます。
 2.  **抽出 (並列スレッド)**: `ExtractChannelBytes` が `ParallelFor` でサンプラーを通して読み出し、選択された各チャンネルにつき1バイト/ピクセルの配列を1つ埋めます。この間ミップはロックされたままです。
 3.  **アセット作成 (ゲームスレッド)**: 選択された各チャンネルについて `TSF_G8` の Source を初期化し、チャンネルのバイト列を memcpy した後、`TC_Grayscale` 圧縮・`SRGB = false` でアセットをファイナライズします。
 
-単一チャンネル形式（`G8`/`G16`/`R16F`/`R32F`）は、R/G/B にその唯一の値を、Alpha には不透明の `255` を返します。これはパッキングパイプラインが `FColor` へ拡張する際の扱いと一致します。（`ProcessTextureSourceData` 側は意図的に「どのチャンネルを要求されても輝度値を返す」ルールを維持しています。パックタブでは、グレースケールマスクを Alpha スロットに割り当てる際にこの挙動に依存しているためです。）
+単一チャンネル形式（`G8`/`G16`/`R16F`/`R32F`）は、R/G/B にその唯一の値を、Alpha には不透明の `255` を返します。（パックパスの `ExtractChannelToG8` 側は意図的に「どのチャンネルを要求されても輝度値を返す」ルールを維持しています。パックタブでは、グレースケールマスクを Alpha スロットに割り当てる際にこの挙動に依存しているためです。）
 
 ### メモリ特性
 
@@ -152,7 +154,7 @@ CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
 これ以外の変更は不要です。`GetSelectedCompressionSettings` は選択中オプションの `CompressionSetting` メンバーを自動的に返します。
 
 ### 新しい入力フォーマットのサポート
-`ProcessTextureSourceData` 内の `switch(Input.Format)` ブロックを更新し、追加の `ETextureSourceFormat` 型 (例: `TSF_BC1`) を処理できるようにします。
+`TextureChannelPackerShared.h` の `VisitChannelSampler` に case を追加し、追加の `ETextureSourceFormat` 型 (例: `TSF_BC1`) を処理できるようにします。パック・アンパックの両パスが自動的にこれを利用します。
 
 ### ローカリゼーション (多言語対応)
 モジュールは `LOCTEXT_NAMESPACE` とヘルパー関数 `GetLocalizedMessage` を使用して、英語と日本語をサポートしています。新しいユーザー向けの文字列はすべて、このパターンを使用してバイリンガルサポートを維持する必要があります。

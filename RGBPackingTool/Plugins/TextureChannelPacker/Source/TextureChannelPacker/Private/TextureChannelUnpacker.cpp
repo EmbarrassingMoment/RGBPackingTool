@@ -43,103 +43,8 @@ using namespace TextureChannelPackerUtils;
 /** Channel labels for the unpack grid, indexed R=0, G=1, B=2, A=3. */
 static const TCHAR* GUnpackChannelLetters[4] = { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") };
 
-/**
- * @brief Builds a per-pixel channel sampler for the given source format and hands it to Visitor.
- *
- * The sampler reads a single channel value straight out of the locked mip and converts it to
- * 8-bit, so neither the preview nor the extraction needs an intermediate full-resolution copy
- * or FColor buffer. Dispatching on the format once (outside the pixel loop) keeps the inner
- * loop free of per-pixel branching on the format.
- *
- * Sampler signature: uint8 (int64 PixelIndex, int32 ChannelIndex), where ChannelIndex is
- * 0=R, 1=G, 2=B, 3=A. Pixel indices are 64-bit, so sources larger than 2 GB are handled.
- *
- * Single-channel formats (G8/G16/R16F/R32F) replicate their lone value across R/G/B and
- * report an opaque (255) Alpha, matching how the packing pipeline widens them to FColor.
- *
- * @return False if the source format is unsupported (Visitor is then not called).
- */
-template <typename FVisitor>
-static bool VisitChannelSampler(const uint8* Src, ETextureSourceFormat Format, FVisitor&& Visitor)
-{
-    // Byte offsets of R, G, B, A within a BGRA8 pixel (see GetBGRAChannelOffset).
-    static const int32 BGRAOffsets[4] = { 2, 1, 0, 3 };
-
-    switch (Format)
-    {
-    case TSF_BGRA8:
-    {
-        Visitor([Src](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            return Src[PixelIndex * 4 + BGRAOffsets[Channel]];
-        });
-        return true;
-    }
-    case TSF_G8:
-    {
-        Visitor([Src](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            return Channel == 3 ? (uint8)255 : Src[PixelIndex];
-        });
-        return true;
-    }
-    case TSF_G16:
-    {
-        const uint16* Pixels = (const uint16*)Src;
-        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            return Channel == 3 ? (uint8)255 : (uint8)(Pixels[PixelIndex] >> 8);
-        });
-        return true;
-    }
-    case TSF_R16F:
-    {
-        const FFloat16* Pixels = (const FFloat16*)Src;
-        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            if (Channel == 3)
-            {
-                return 255;
-            }
-            return (uint8)FMath::Clamp<float>((float)Pixels[PixelIndex] * 255.0f, 0.0f, 255.0f);
-        });
-        return true;
-    }
-    case TSF_R32F:
-    {
-        const float* Pixels = (const float*)Src;
-        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            if (Channel == 3)
-            {
-                return 255;
-            }
-            return (uint8)FMath::Clamp<float>(Pixels[PixelIndex] * 255.0f, 0.0f, 255.0f);
-        });
-        return true;
-    }
-    case TSF_RGBA32F:
-    {
-        const FLinearColor* Pixels = (const FLinearColor*)Src;
-        Visitor([Pixels](int64 PixelIndex, int32 Channel) -> uint8
-        {
-            const FLinearColor& LC = Pixels[PixelIndex];
-            float Value;
-            switch (Channel)
-            {
-            case 0:  Value = LC.R; break;
-            case 1:  Value = LC.G; break;
-            case 2:  Value = LC.B; break;
-            default: Value = LC.A; break;
-            }
-            return (uint8)FMath::Clamp<float>(Value * 255.0f, 0.0f, 255.0f);
-        });
-        return true;
-    }
-    default:
-        return false;
-    }
-}
+// The per-format channel sampler (VisitChannelSampler) is shared with the pack path and
+// lives in TextureChannelPackerShared.h.
 
 /** Per-destination-row uniform-tracking state, merged after the parallel scan. */
 struct FChannelRowScan
@@ -473,8 +378,9 @@ void FTextureChannelUnpacker::UpdatePreview()
 
     // Read straight from the locked mip: no full-resolution copy and no FColor buffers, so
     // selecting a large texture costs only the four small preview arrays. One pass produces
-    // both the downsampled previews and the exact uniform-channel verdicts.
-    uint8* Locked = SourceTex->Source.LockMip(0);
+    // both the downsampled previews and the exact uniform-channel verdicts. The lock is
+    // read-only so unlocking does not re-hash the payload or touch the source GUID.
+    const uint8* Locked = SourceTex->Source.LockMipReadOnly(0);
     if (!Locked)
     {
         ShowNotification(GetLocalizedMessage(
@@ -738,7 +644,8 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
     const ETextureSourceFormat SourceFormat = SourceTex->Source.GetFormat();
     const int64 NumSourcePixels = (int64)SrcWidth * (int64)SrcHeight;
 
-    uint8* Locked = SourceTex->Source.LockMip(0);
+    // Read-only lock: see UpdatePreview.
+    const uint8* Locked = SourceTex->Source.LockMipReadOnly(0);
     if (!Locked)
     {
         ShowNotification(GetLocalizedMessage(

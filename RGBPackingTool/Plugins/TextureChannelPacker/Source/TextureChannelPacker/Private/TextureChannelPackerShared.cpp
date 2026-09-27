@@ -9,9 +9,8 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Styling/AppStyle.h"
-#include "ImageUtils.h"
+#include "ImageCore.h"
 #include "Math/UnrealMathUtility.h"
-#include "Math/Float16.h"
 #include "Async/ParallelFor.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Culture.h"
@@ -95,9 +94,44 @@ bool IsSingleChannelFormat(ETextureSourceFormat Format)
     return Format == TSF_G8 || Format == TSF_G16 || Format == TSF_R16F || Format == TSF_R32F;
 }
 
-FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
+FLockedTextureSource& FLockedTextureSource::operator=(FLockedTextureSource&& Other)
 {
-    FTextureRawData Result;
+    if (this != &Other)
+    {
+        Release();
+
+        Data = Other.Data;
+        Width = Other.Width;
+        Height = Other.Height;
+        Format = Other.Format;
+        TextureName = MoveTemp(Other.TextureName);
+        bIsValid = Other.bIsValid;
+        ErrorMessage = MoveTemp(Other.ErrorMessage);
+        LockedTexture = Other.LockedTexture;
+
+        Other.Data = nullptr;
+        Other.bIsValid = false;
+        Other.LockedTexture = nullptr;
+    }
+    return *this;
+}
+
+void FLockedTextureSource::Release()
+{
+#if WITH_EDITORONLY_DATA
+    if (LockedTexture)
+    {
+        LockedTexture->Source.UnlockMip(0);
+    }
+#endif
+    LockedTexture = nullptr;
+    Data = nullptr;
+    bIsValid = false;
+}
+
+FLockedTextureSource FLockedTextureSource::Lock(UTexture2D* SourceTex)
+{
+    FLockedTextureSource Result;
     if (!SourceTex)
     {
         return Result;
@@ -110,58 +144,44 @@ FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     Result.Height = SourceTex->Source.GetSizeY();
     Result.Format = SourceTex->Source.GetFormat();
 
-    uint8* SrcData = SourceTex->Source.LockMip(0);
-    if (SrcData)
+    const int32 BytesPerPixel = SourceTex->Source.GetBytesPerPixel();
+    if (BytesPerPixel == 0)
     {
-        int32 BytesPerPixel = SourceTex->Source.GetBytesPerPixel();
-
-        // Validation 1: Check if BytesPerPixel is valid
-        if (BytesPerPixel == 0)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("GetBytesPerPixel() returned 0 for texture: %s (Format: %d). This format may not be supported."),
-                *Result.TextureName, (int32)Result.Format);
-            SourceTex->Source.UnlockMip(0);
-            return Result;  // Return invalid result
-        }
-
-        // Compute the byte count in 64-bit to avoid int32 overflow. A 16K RGBA32F texture
-        // is 16384*16384*16 = 4 GB, which silently wraps to a small/negative value in int32
-        // (e.g. exactly 0), producing a confusing "invalid total bytes" failure. TArray is
-        // int32-indexed, so anything larger than INT32_MAX cannot be held regardless.
-        const int64 TotalBytes = (int64)Result.Width * (int64)Result.Height * (int64)BytesPerPixel;
-
-        // Validation 2: Check if TotalBytes is valid
-        if (TotalBytes <= 0)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("Invalid total bytes (%lld) for texture: %s (Width: %d, Height: %d, BPP: %d)"),
-                TotalBytes, *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
-            SourceTex->Source.UnlockMip(0);
-            return Result;  // Return invalid result
-        }
-
-        // Validation 3: Reject textures too large for a 32-bit-indexed TArray.
-        if (TotalBytes > (int64)MAX_int32)
-        {
-            UE_LOG(LogTexturePacker, Error,
-                TEXT("Texture too large to process: %s (Width: %d, Height: %d, BPP: %d, Bytes: %lld)"),
-                *Result.TextureName, Result.Width, Result.Height, BytesPerPixel, TotalBytes);
-            SourceTex->Source.UnlockMip(0);
-            Result.ErrorMessage = GetLocalizedMessage(
-                TEXT("ErrorTextureTooLarge"),
-                TEXT("Input texture is too large to process. Reduce its resolution or use a format with fewer bytes per pixel (e.g. 8-bit instead of 32-bit float)."),
-                TEXT("入力テクスチャが大きすぎて処理できません。解像度を下げるか、ピクセルあたりのバイト数が少ない形式（32bit float ではなく 8bit など）を使用してください。")
-            );
-            return Result;  // Return invalid result
-        }
-
-        // Data is valid, proceed with copy
-        Result.RawData.SetNumUninitialized((int32)TotalBytes);
-        FMemory::Memcpy(Result.RawData.GetData(), SrcData, TotalBytes);
-        Result.bIsValid = true;
+        UE_LOG(LogTexturePacker, Error,
+            TEXT("GetBytesPerPixel() returned 0 for texture: %s (Format: %d). This format may not be supported."),
+            *Result.TextureName, (int32)Result.Format);
+        return Result;  // Return invalid result
     }
-    else
+
+    // Compute the pixel count in 64-bit to avoid int32 overflow. Every per-channel buffer
+    // is one byte per pixel and TArray is int32-indexed, so the pixel count itself must fit.
+    const int64 NumPixels = (int64)Result.Width * (int64)Result.Height;
+
+    if (NumPixels <= 0)
+    {
+        UE_LOG(LogTexturePacker, Error,
+            TEXT("Invalid source dimensions for texture: %s (Width: %d, Height: %d, BPP: %d)"),
+            *Result.TextureName, Result.Width, Result.Height, BytesPerPixel);
+        return Result;  // Return invalid result
+    }
+
+    if (NumPixels > (int64)MAX_int32)
+    {
+        UE_LOG(LogTexturePacker, Error,
+            TEXT("Texture too large to process: %s (Width: %d, Height: %d, Pixels: %lld)"),
+            *Result.TextureName, Result.Width, Result.Height, NumPixels);
+        Result.ErrorMessage = GetLocalizedMessage(
+            TEXT("ErrorTextureTooLarge"),
+            TEXT("Input texture is too large to process. Reduce its resolution."),
+            TEXT("入力テクスチャが大きすぎて処理できません。解像度を下げてください。")
+        );
+        return Result;  // Return invalid result
+    }
+
+    // Read-only lock: the data is only ever read, and a write lock would re-hash the payload
+    // and regenerate the input asset's source GUID on unlock.
+    const uint8* SrcData = SourceTex->Source.LockMipReadOnly(0);
+    if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *Result.TextureName);
         Result.ErrorMessage = GetLocalizedMessage(
@@ -169,8 +189,12 @@ FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
             TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
             TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")
         );
+        return Result;
     }
-    SourceTex->Source.UnlockMip(0);
+
+    Result.Data = SrcData;
+    Result.LockedTexture = SourceTex;
+    Result.bIsValid = true;
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
     Result.ErrorMessage = GetLocalizedMessage(
@@ -183,120 +207,54 @@ FTextureRawData ExtractTextureSourceData(UTexture2D* SourceTex)
     return Result;
 }
 
-FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel)
+bool ExtractChannelToG8(const FLockedTextureSource& Input, ESourceChannel SourceChannel, TArray<uint8>& OutChannel)
+{
+    if (!Input.bIsValid || !Input.Data)
+    {
+        return false;
+    }
+
+    const int32 Width = Input.Width;
+    const int32 Height = Input.Height;
+
+    // Single-channel formats carry one value; use it for whichever slot the user picked
+    // (including Alpha) instead of the sampler's opaque-alpha convention.
+    const int32 ChannelIndex = IsSingleChannelFormat(Input.Format) ? 0 : (int32)SourceChannel;
+
+    OutChannel.SetNumUninitialized(Width * Height);
+    uint8* Dest = OutChannel.GetData();
+
+    return VisitChannelSampler(Input.Data, Input.Format, [&](auto&& Sample)
+    {
+        // One task per row with a plain inner loop, so the sampler is inlined and the
+        // compiler can vectorize the strided reads.
+        ParallelFor(Height, [&](int32 Y)
+        {
+            const int64 RowStart = (int64)Y * Width;
+            uint8* DestRow = Dest + RowStart;
+            for (int32 X = 0; X < Width; ++X)
+            {
+                DestRow[X] = Sample(RowStart + X, ChannelIndex);
+            }
+        });
+    });
+}
+
+FTextureProcessResult ProcessTextureSourceData(const FLockedTextureSource& Input, int32 TargetWidth, int32 TargetHeight, ESourceChannel SourceChannel)
 {
     FTextureProcessResult Result;
-    // Default to zero-filled array
-    Result.ProcessedData.Init(0, TargetWidth * TargetHeight);
+    const int32 NumTargetPixels = TargetWidth * TargetHeight;
 
     if (!Input.bIsValid)
     {
-        return Result; // Empty/Invalid input results in black channel (or white if handled by caller default)
+        // Empty/invalid input: return no data so the caller substitutes the slot default
+        // (black for R/G/B, opaque white for Alpha) and reports any error message.
+        return Result;
     }
 
-    int32 SrcWidth = Input.Width;
-    int32 SrcHeight = Input.Height;
-    int32 NumPixels = SrcWidth * SrcHeight;
-    const uint8* SrcData = Input.RawData.GetData();
-
-    // Optimization: Fast path for same-resolution textures
-    if (SrcWidth == TargetWidth && SrcHeight == TargetHeight)
-    {
-        if (Input.Format == TSF_G8)
-        {
-            // Direct move for Grayscale input (zero-copy optimization).
-            // Channel selection is moot for single-channel data.
-            Result.ProcessedData = MoveTemp(Input.RawData);
-            return Result;
-        }
-        else if (Input.Format == TSF_BGRA8)
-        {
-            // Parallel channel extraction for BGRA input
-            Result.ProcessedData.SetNumUninitialized(NumPixels);
-            uint8* DestData = Result.ProcessedData.GetData();
-            const uint8* SrcPtr = SrcData;
-            const int32 ChannelOffset = GetBGRAChannelOffset(SourceChannel);
-
-            ParallelFor(NumPixels, [DestData, SrcPtr, ChannelOffset](int32 i)
-            {
-                DestData[i] = SrcPtr[i * 4 + ChannelOffset];
-            });
-            return Result;
-        }
-    }
-
-    TArray<FColor> SrcColors;
-    SrcColors.SetNumUninitialized(NumPixels);
-
-    // Convert input to FColor (RGBA values stored in FColor's R/G/B/A members).
-    // For single-channel formats we replicate the value across R/G/B so that channel
-    // selection still produces the expected result.
-    switch (Input.Format)
-    {
-    case TSF_BGRA8:
-    {
-        FMemory::Memcpy(SrcColors.GetData(), SrcData, Input.RawData.Num());
-        break;
-    }
-    case TSF_G8:
-    {
-        const uint8* GrayData = SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = GrayData[i];
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_G16:
-    {
-        // 16-bit Grayscale: 2 bytes per pixel
-        const uint16* GrayData16 = (const uint16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)(GrayData16[i] >> 8);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R16F:
-    {
-        // Half-float: 2 bytes per pixel
-        const FFloat16* Pixel16 = (const FFloat16*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>((float)Pixel16[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_R32F:
-    {
-        // Float: 4 bytes per pixel
-        const float* Pixel32 = (const float*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            uint8 Val = (uint8)FMath::Clamp<float>(Pixel32[i] * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(Val, Val, Val, 255);
-        }
-        break;
-    }
-    case TSF_RGBA32F:
-    {
-        // Linear Color: 16 bytes per pixel. Preserve all four channels so the user can pick any.
-        const FLinearColor* LinearColors = (const FLinearColor*)SrcData;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-            const FLinearColor& LC = LinearColors[i];
-            uint8 R = (uint8)FMath::Clamp<float>(LC.R * 255.0f, 0.0f, 255.0f);
-            uint8 G = (uint8)FMath::Clamp<float>(LC.G * 255.0f, 0.0f, 255.0f);
-            uint8 B = (uint8)FMath::Clamp<float>(LC.B * 255.0f, 0.0f, 255.0f);
-            uint8 A = (uint8)FMath::Clamp<float>(LC.A * 255.0f, 0.0f, 255.0f);
-            SrcColors[i] = FColor(R, G, B, A);
-        }
-        break;
-    }
-    default:
+    // Pull the selected channel out of the locked mip at source resolution (1 byte per pixel).
+    TArray<uint8> SourceChannel8;
+    if (!ExtractChannelToG8(Input, SourceChannel, SourceChannel8))
     {
         UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)Input.Format, *Input.TextureName);
         Result.bSuccess = false;
@@ -307,31 +265,19 @@ FTextureProcessResult ProcessTextureSourceData(FTextureRawData& Input, int32 Tar
         );
         return Result;
     }
+
+    if (Input.Width == TargetWidth && Input.Height == TargetHeight)
+    {
+        Result.ProcessedData = MoveTemp(SourceChannel8);
+        return Result;
     }
 
-    // Resize if necessary
-    TArray<FColor> ResizedColors;
-    if (SrcWidth != TargetWidth || SrcHeight != TargetHeight)
-    {
-        ResizedColors.SetNum(TargetWidth * TargetHeight);
-        FImageUtils::ImageResize(SrcWidth, SrcHeight, SrcColors, TargetWidth, TargetHeight, ResizedColors, false);
-    }
-    else
-    {
-        ResizedColors = MoveTemp(SrcColors);
-    }
-
-    // For single-channel source formats, the channel selection has no effect (R=G=B).
-    // We always read R to keep the inner loop branch-free.
-    const ESourceChannel EffectiveChannel = IsSingleChannelFormat(Input.Format) ? ESourceChannel::Red : SourceChannel;
-
-    // Convert FColor to uint8 array (single channel, 1 byte per pixel)
-    Result.ProcessedData.SetNumUninitialized(TargetWidth * TargetHeight);
-    uint8* DestData = Result.ProcessedData.GetData();
-    for (int32 i = 0; i < TargetWidth * TargetHeight; ++i)
-    {
-        DestData[i] = ExtractChannelFromFColor(ResizedColors[i], EffectiveChannel);
-    }
+    // Resize the single 8-bit channel. The data is linear (mask/data, not color), so the
+    // filter runs on the raw values just like the previous box average did.
+    Result.ProcessedData.SetNumUninitialized(NumTargetPixels);
+    const FImageView SourceView((void*)SourceChannel8.GetData(), Input.Width, Input.Height, 1, ERawImageFormat::G8, EGammaSpace::Linear);
+    const FImageView TargetView(Result.ProcessedData.GetData(), TargetWidth, TargetHeight, 1, ERawImageFormat::G8, EGammaSpace::Linear);
+    FImageCore::ResizeImage(SourceView, TargetView, FImageCore::EResizeImageFilter::Box);
 
     return Result;
 }

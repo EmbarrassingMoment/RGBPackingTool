@@ -152,6 +152,9 @@ struct FChannelPackerPreset
  */
 class FTextureChannelPackerModule : public IModuleInterface
 {
+    /** The perf automation test drives CreateTexture/UpdatePreview directly with synthetic inputs. */
+    friend class FTextureChannelPackerPerfTest;
+
 public:
     /**
      * @brief Called right after the module DLL has been loaded and the module object has been created.
