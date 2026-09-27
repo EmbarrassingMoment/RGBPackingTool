@@ -1314,6 +1314,8 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 {
     check(IsInGameThread());
 
+    FPhaseTimer TotalTimer(TEXT("Pack total"));
+
     // Initialize progress dialog with 6 steps total
     FScopedSlowTask SlowTask(6.0f, GetLocalizedMessage(
         TEXT("ProgressProcessing"),
@@ -1395,13 +1397,19 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         return;
     }
 
-    TArray<FTextureRawData> RawInputs;
-    RawInputs.SetNum(4); // R, G, B, A
+    // Lock the inputs' source mips read-only for the duration of processing. No full-resolution
+    // copy is made: the workers read straight from the locked mips. Read locks are recursive,
+    // so the same texture assigned to several slots is fine. Any early return below releases
+    // the locks through the destructors.
+    FLockedTextureSource RawInputs[4]; // R, G, B, A
 
-    RawInputs[0] = ExtractTextureSourceData(InputTextureR.Get());
-    RawInputs[1] = ExtractTextureSourceData(InputTextureG.Get());
-    RawInputs[2] = ExtractTextureSourceData(InputTextureB.Get());
-    RawInputs[3] = ExtractTextureSourceData(InputTextureA.Get());
+    {
+        FPhaseTimer ExtractTimer(TEXT("Pack extract"));
+        RawInputs[0] = FLockedTextureSource::Lock(InputTextureR.Get());
+        RawInputs[1] = FLockedTextureSource::Lock(InputTextureG.Get());
+        RawInputs[2] = FLockedTextureSource::Lock(InputTextureB.Get());
+        RawInputs[3] = FLockedTextureSource::Lock(InputTextureA.Get());
+    }
 
     // ---------------------------------------------------------
     // STEP 2: Process Data in Parallel (Background Threads)
@@ -1429,10 +1437,13 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 
     const ESourceChannel SourceChannels[4] = { SourceChannelR, SourceChannelG, SourceChannelB, SourceChannelA };
 
-    ParallelFor(4, [&](int32 Index)
     {
-        ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height, SourceChannels[Index]);
-    });
+        FPhaseTimer ProcessTimer(TEXT("Pack process"));
+        ParallelFor(4, [&](int32 Index)
+        {
+            ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height, SourceChannels[Index]);
+        });
+    }
 
     if (SlowTask.ShouldCancel())
     {
@@ -1457,14 +1468,16 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         }
     }
 
-    // Check for errors from texture extraction
-    for (int32 i = 0; i < RawInputs.Num(); ++i)
+    // Check for errors from texture locking, then release the source mips: everything
+    // needed from here on lives in ProcessedResults.
+    for (FLockedTextureSource& Input : RawInputs)
     {
-        if (!RawInputs[i].bIsValid && !RawInputs[i].ErrorMessage.IsEmpty())
+        if (!Input.bIsValid && !Input.ErrorMessage.IsEmpty())
         {
-            ShowNotification(RawInputs[i].ErrorMessage, false);
+            ShowNotification(Input.ErrorMessage, false);
             // Continue processing - the channel will be filled with default values
         }
+        Input.Release();
     }
 
 #if WITH_EDITORONLY_DATA
@@ -1493,6 +1506,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     }
 
     // Lock and Write Pixels directly to Source
+    TUniquePtr<FPhaseTimer> WriteTimer = MakeUnique<FPhaseTimer>(TEXT("Pack write"));
     uint8* MipData = NewTexture->Source.LockMip(0);
     if (MipData)
     {
@@ -1559,6 +1573,7 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
         });
     }
     NewTexture->Source.UnlockMip(0);
+    WriteTimer.Reset();
 #endif
 
     SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
@@ -1585,8 +1600,11 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
     // Even if TC_Default is selected, treat it as linear (sRGB=false) for channel packing purposes.
     NewTexture->SRGB = false;
 
-    NewTexture->UpdateResource();
-    NewTexture->PostEditChange();
+    {
+        FPhaseTimer FinalizeTimer(TEXT("Pack finalize"));
+        NewTexture->UpdateResource();
+        NewTexture->PostEditChange();
+    }
 
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(NewTexture);
@@ -1609,19 +1627,28 @@ void FTextureChannelPackerModule::UpdatePreview()
     const int32 H = FMath::Max(1, FMath::RoundToInt(SrcH * Scale));
     const int32 NumPixels = W * H;
 
-    // Extract source data on the Game Thread, then process channels in parallel.
-    FTextureRawData RawInputs[4];
-    RawInputs[0] = ExtractTextureSourceData(InputTextureR.Get());
-    RawInputs[1] = ExtractTextureSourceData(InputTextureG.Get());
-    RawInputs[2] = ExtractTextureSourceData(InputTextureB.Get());
-    RawInputs[3] = ExtractTextureSourceData(InputTextureA.Get());
+    FPhaseTimer TotalTimer(TEXT("Preview total"));
+
+    // Lock the source mips read-only on the Game Thread, then process channels in parallel.
+    // The preview reads the sources in place; nothing is copied at full resolution.
+    FLockedTextureSource RawInputs[4];
+    {
+        FPhaseTimer ExtractTimer(TEXT("Preview extract"));
+        RawInputs[0] = FLockedTextureSource::Lock(InputTextureR.Get());
+        RawInputs[1] = FLockedTextureSource::Lock(InputTextureG.Get());
+        RawInputs[2] = FLockedTextureSource::Lock(InputTextureB.Get());
+        RawInputs[3] = FLockedTextureSource::Lock(InputTextureA.Get());
+    }
 
     const ESourceChannel SourceChannels[4] = { SourceChannelR, SourceChannelG, SourceChannelB, SourceChannelA };
     FTextureProcessResult Results[4];
-    ParallelFor(4, [&](int32 Index)
     {
-        Results[Index] = ProcessTextureSourceData(RawInputs[Index], W, H, SourceChannels[Index]);
-    });
+        FPhaseTimer ProcessTimer(TEXT("Preview process"));
+        ParallelFor(4, [&](int32 Index)
+        {
+            Results[Index] = ProcessTextureSourceData(RawInputs[Index], W, H, SourceChannels[Index]);
+        });
+    }
 
     const bool bInvert[4] = { bInvertR, bInvertG, bInvertB, bInvertA };
 

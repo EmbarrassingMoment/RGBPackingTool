@@ -70,22 +70,23 @@ The Unpack tab shares the module-owned preset array (`FChannelPackerPreset` gain
 
 ### Data Structures
 
-To support multi-threaded processing without accessing `UObject` methods (like `LockMip`) from background threads, the module uses two helper structs defined in the `TextureChannelPackerUtils` namespace (`TextureChannelPackerShared.h`):
+The pack path reads input pixels in place: nothing is copied at full resolution. Two helper structs defined in the `TextureChannelPackerUtils` namespace (`TextureChannelPackerShared.h`) carry data between the Game Thread and the worker threads:
 
-#### `FTextureRawData`
-Used to transport raw pixel data from the Game Thread to worker threads.
+#### `FLockedTextureSource`
+A read-only view of an input texture's Mip 0. `Lock` (Game Thread) validates the dimensions/format and locks the mip with `LockMipReadOnly`; `Release` or destruction unlocks it. Workers read straight from `Data` in between, which the engine's texture threading rules allow for read access.
 ```cpp
-struct FTextureRawData
+struct FLockedTextureSource
 {
-    TArray<uint8> RawData;      // Raw byte content of Mip 0
+    const uint8* Data;          // Locked Mip 0 bytes (valid until Release)
     int32 Width;                // Texture Width
     int32 Height;               // Texture Height
     ETextureSourceFormat Format;// e.g., TSF_BGRA8, TSF_G8
     FString TextureName;        // For logging/debugging
-    bool bIsValid;              // True if extraction succeeded
-    FText ErrorMessage;         // User-facing error message if extraction failed
+    bool bIsValid;              // True if the lock succeeded
+    FText ErrorMessage;         // User-facing error message if locking failed
 };
 ```
+Read locks are recursive, so the same texture assigned to several slots can be locked several times. A read-only lock also avoids the payload re-hash and source-GUID regeneration that `UnlockMip` performs after a write lock, so packing no longer modifies its input assets.
 
 #### `FTextureProcessResult`
 Used to return processed single-channel data from worker threads to the Game Thread.
@@ -102,15 +103,16 @@ struct FTextureProcessResult
 
 The texture generation pipeline (`CreateTexture`) is designed to be responsive and thread-safe.
 
-1.  **Extraction (Game Thread)**
-    -   `ExtractTextureSourceData` is called for each input (R, G, B, A).
-    -   It locks the `Source` mipmap of the `UTexture2D` and `Memcpy`s the raw bytes into `FTextureRawData`.
-    -   This isolates the background threads from UObject validity checks.
+1.  **Locking (Game Thread)**
+    -   `FLockedTextureSource::Lock` is called for each input (R, G, B, A).
+    -   It validates the dimensions/format and locks the `Source` mipmap of the `UTexture2D` read-only. No pixel data is copied.
 
 2.  **Processing (Parallel Threads)**
     -   `ParallelFor` is used to invoke `ProcessTextureSourceData` for all 4 channels concurrently.
-    -   **Format Conversion**: Supports `TSF_BGRA8` (extracts the selected source channel, Red by default), `TSF_G8` (Grayscale), `TSF_G16` (16-bit Grayscale), and Float formats (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`). All are converted to 8-bit `uint8`.
-    -   **Resizing**: If the input resolution differs from the `TargetWidth` and `TargetHeight`, `FImageUtils::ImageResize` is used.
+    -   **Channel Extraction**: `ExtractChannelToG8` reads the selected channel straight out of the locked mip through `VisitChannelSampler` (one task per row, plain inner loop), producing a one-byte-per-pixel buffer. Supports `TSF_BGRA8` (selected source channel, Red by default), `TSF_G8` (Grayscale), `TSF_G16` (16-bit Grayscale), and Float formats (`TSF_R16F`, `TSF_R32F`, `TSF_RGBA32F`). All are converted to 8-bit `uint8`.
+    -   **Resizing**: If the input resolution differs from the `TargetWidth` and `TargetHeight`, the extracted 8-bit channel is resized with `FImageCore::ResizeImage` (Box filter, multi-threaded). Resizing a single channel after extraction is exact because the filter is linear and per-channel, and it does a quarter of the work of resizing all four channels as `FColor`.
+    -   An empty slot (or an unsupported format) yields an empty result; the reconstruction step substitutes the slot default (0 for R/G/B, 255 for Alpha).
+    -   The source locks are released as soon as all four results exist.
 
 3.  **Reconstruction (Game Thread)**
     -   A new `UTexture2D` is created (or updated) in the package.
@@ -120,13 +122,13 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
 
 ### Unpack Flow
 
-The unpack path does not go through `FTextureRawData` / `ProcessTextureSourceData`. Because the output resolution always equals the source resolution, no resize — and therefore no `FColor` intermediate — is required, so channels are read straight out of the locked mip:
+The unpack path does not go through `ProcessTextureSourceData`. Because the output resolution always equals the source resolution, no resize is required, so channels are read straight out of the mip (locked with `LockMipReadOnly`) through the same sampler the pack path uses:
 
-1.  **Sampler Dispatch**: `VisitChannelSampler` switches on `ETextureSourceFormat` once and hands the caller a `uint8 (int64 PixelIndex, int32 ChannelIndex)` sampler that converts to 8-bit inline. Dispatching outside the pixel loop keeps the inner loop branch-free, and 64-bit pixel indices mean sources larger than 2 GB (e.g. 16K `RGBA32F`) are handled without an intermediate buffer.
+1.  **Sampler Dispatch**: `VisitChannelSampler` (shared, in `TextureChannelPackerShared.h`) switches on `ETextureSourceFormat` once and hands the caller a `uint8 (int64 PixelIndex, int32 ChannelIndex)` sampler that converts to 8-bit inline. Dispatching outside the pixel loop keeps the inner loop branch-free, and 64-bit pixel indices mean sources larger than 2 GB (e.g. 16K `RGBA32F`) are handled without an intermediate buffer.
 2.  **Extraction (Parallel Threads)**: `ExtractChannelBytes` fills one byte-per-pixel array per selected channel via `ParallelFor`, reading through the sampler. The mip stays locked for the duration.
 3.  **Asset Creation (Game Thread)**: For each selected channel, a `TSF_G8` source is initialized, the channel bytes are memcpy'd in, and the asset is finalized with `TC_Grayscale` compression and `SRGB = false`.
 
-Single-channel source formats (`G8`/`G16`/`R16F`/`R32F`) report their lone value on R/G/B and an opaque `255` on Alpha, matching how the packing pipeline widens them to `FColor`. (`ProcessTextureSourceData` deliberately keeps its own rule of returning the luminance for *any* requested channel — the Pack tab relies on that when a grayscale mask is assigned to the Alpha slot.)
+Single-channel source formats (`G8`/`G16`/`R16F`/`R32F`) report their lone value on R/G/B and an opaque `255` on Alpha. (The pack path's `ExtractChannelToG8` deliberately keeps its own rule of returning the luminance for *any* requested channel — the Pack tab relies on that when a grayscale mask is assigned to the Alpha slot.)
 
 ### Memory Behavior
 
@@ -152,7 +154,7 @@ CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
 No further changes are needed: `GetSelectedCompressionSettings` returns the selected option's `CompressionSetting` member automatically.
 
 ### Supporting New Input Formats
-Update the `switch(Input.Format)` block in `ProcessTextureSourceData` to handle additional `ETextureSourceFormat` types (e.g., `TSF_BC1`).
+Add a case to `VisitChannelSampler` in `TextureChannelPackerShared.h` to handle additional `ETextureSourceFormat` types (e.g., `TSF_BC1`). Both the pack and unpack paths pick it up automatically.
 
 ### Localization
 The module uses `LOCTEXT_NAMESPACE` and a helper function `GetLocalizedMessage` to support English and Japanese. All new user-facing strings should use this pattern to maintain bilingual support.

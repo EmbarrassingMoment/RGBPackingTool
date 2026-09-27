@@ -78,3 +78,8 @@ __pycache__/
 # Jules (unused)
 # ---------------------------------------------------------------------------
 .jules/
+
+# ---------------------------------------------------------------------------
+# Local test textures for manual verification (see Saved/TestTextures/README.md)
+# ---------------------------------------------------------------------------
+RGBPackingTool/Content/TestTextures/
