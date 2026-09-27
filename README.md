@@ -14,7 +14,7 @@
 ## Features
 
 - **4-Channel Packing (RGBA)**: Takes up to four input textures and packs the selected channel of each (Red by default) into the output's Red, Green, Blue, and Alpha channels respectively.
-- **Auto-Resizing**: Automatically resizes input textures to match the specified target resolution using High-Quality Bilinear Interpolation (`FImageUtils`).
+- **Auto-Resizing**: Automatically resizes input textures to match the specified target resolution. Only the selected channel is resized, using a multi-threaded box filter (`FImageCore::ResizeImage`).
 - **Input Handling**:
   - Reads the selected channel from each source texture (defaults to **Red**).
   - **Source Channel Selector**: A per-slot dropdown lets you pick R/G/B/A from the input texture, so you can source data from a color or already-packed texture without first splitting it. Ignored for single-channel grayscale formats.
