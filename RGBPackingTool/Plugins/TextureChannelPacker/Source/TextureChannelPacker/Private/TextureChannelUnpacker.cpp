@@ -1,5 +1,6 @@
 #include "TextureChannelUnpacker.h"
 #include "TextureChannelPackerShared.h"
+#include "TextureChannelPackerCore.h"
 #include "Engine/Texture2D.h"
 // FTexturePlatformData lives in a dedicated header on newer engine versions but is
 // declared inside Engine/Texture.h (pulled in via Engine/Texture2D.h above) on older
@@ -10,7 +11,6 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
 #include "Misc/MessageDialog.h"
-#include "Misc/ScopedSlowTask.h"
 #include "Math/UnrealMathUtility.h"
 #include "Math/Float16.h"
 #include "Async/ParallelFor.h"
@@ -152,24 +152,6 @@ static void ScanAndDownsampleChannels(
     }
 }
 
-/**
- * @brief Copies one channel out of the source at full resolution.
- *
- * Reads straight from the locked mip through the sampler, so the only allocation is the
- * output buffer itself (one byte per pixel).
- */
-template <typename FSampler>
-static void ExtractChannelBytes(const FSampler& Sample, int32 Channel, int64 NumPixels, TArray<uint8>& Out)
-{
-    Out.SetNumUninitialized((int32)NumPixels);
-    uint8* Dest = Out.GetData();
-
-    ParallelFor((int32)NumPixels, [&Sample, Dest, Channel](int32 PixelIndex)
-    {
-        Dest[PixelIndex] = Sample((int64)PixelIndex, Channel);
-    });
-}
-
 void FTextureChannelUnpacker::Initialize(const TArray<TSharedPtr<FChannelPackerPreset>>* InPresets, TSharedPtr<FChannelPackerPreset> InDefaultPreset)
 {
     Presets = InPresets;
@@ -287,10 +269,7 @@ void FTextureChannelUnpacker::AutoGenerateBaseName()
         return;
     }
 
-    FString BaseName = SourceTexture->GetName();
-
-    // Strip a known packed suffix (any preset's filename suffix, e.g. "_ORM", "_MRA",
-    // "_Packed"), longest first so "_Packed" wins over a hypothetical "_P".
+    // Any preset's filename suffix (e.g. "_ORM", "_MRA", "_Packed") counts as a known packed suffix.
     TArray<FString> KnownSuffixes;
     if (Presets)
     {
@@ -302,30 +281,8 @@ void FTextureChannelUnpacker::AutoGenerateBaseName()
             }
         }
     }
-    KnownSuffixes.Sort([](const FString& A, const FString& B) { return A.Len() > B.Len(); });
 
-    for (const FString& Suffix : KnownSuffixes)
-    {
-        if (BaseName.Len() > Suffix.Len() && BaseName.EndsWith(Suffix, ESearchCase::IgnoreCase))
-        {
-            BaseName.LeftChopInline(Suffix.Len());
-            break;
-        }
-    }
-
-    // Enforce "T_" prefix
-    if (!BaseName.StartsWith(TEXT("T_")))
-    {
-        BaseName = TEXT("T_") + BaseName;
-    }
-
-    // Remove trailing underscores
-    while (BaseName.EndsWith(TEXT("_")))
-    {
-        BaseName.LeftChopInline(1);
-    }
-
-    BaseFileName = BaseName;
+    BaseFileName = TextureChannelPackerCore::MakeUnpackBaseName(SourceTexture->GetName(), KnownSuffixes);
 }
 
 void FTextureChannelUnpacker::OnSourceTextureChanged(UTexture2D* NewTexture)
@@ -606,184 +563,34 @@ FReply FTextureChannelUnpacker::OnExtractClicked()
         }
     }
 
-    // Progress: 1 extract + one frame per saved channel.
-    FScopedSlowTask SlowTask((float)(1 + SelectedChannels.Num()), GetLocalizedMessage(
-        TEXT("ProgressUnpacking"),
-        TEXT("Unpacking Texture..."),
-        TEXT("テクスチャをアンパック中...")
-    ));
-    SlowTask.MakeDialog(true); // true = cancellable
+    // The user's checkboxes decide the channels (uniform channels were pre-unchecked by the
+    // preview), the overwrite was confirmed above, and the packages are left for the user to save.
+    FChannelPackerUnpackRequest Request;
+    Request.Source = SourceTex;
+    Request.bExportRed = bExportChannel[0];
+    Request.bExportGreen = bExportChannel[1];
+    Request.bExportBlue = bExportChannel[2];
+    Request.bExportAlpha = bExportChannel[3];
+    Request.bSkipUniformChannels = false;
+    Request.OutputPath = OutputPackagePath;
+    Request.BaseName = BaseFileName;
+    Request.SuffixRed = GetChannelSuffix(0);
+    Request.SuffixGreen = GetChannelSuffix(1);
+    Request.SuffixBlue = GetChannelSuffix(2);
+    Request.SuffixAlpha = GetChannelSuffix(3);
+    Request.OverwritePolicy = EChannelPackerOverwritePolicy::Overwrite;
+    Request.bSave = false;
 
-    const FText CancelMsg = GetLocalizedMessage(
-        TEXT("UnpackCancelled"),
-        TEXT("Unpack was cancelled by user."),
-        TEXT("アンパックがユーザーによってキャンセルされました。")
-    );
+    TextureChannelPackerCore::FExecutionOptions Options;
+    Options.bShowProgressDialog = true;
 
-    // ---------------------------------------------------------
-    // STEP 1: Extract the Selected Channels
-    // ---------------------------------------------------------
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressProcessingChannels"),
-        TEXT("Extracting channels..."),
-        TEXT("チャンネルを抽出中...")
-    ));
+    const FChannelPackerResult Result = TextureChannelPackerCore::Unpack(Request, Options);
 
-    // Output resolution always matches the source, so no resize (and therefore no FColor
-    // conversion) is needed: each channel is read straight out of the locked mip. The mip
-    // stays locked across the extraction, which costs nothing extra in memory — only the
-    // one-byte-per-pixel output buffers are allocated.
-    TArray<TArray<uint8>> ChannelData;
-    ChannelData.SetNum(SelectedChannels.Num());
-
-    // Set once the channels have actually been read. Stays false in non-editor builds, where
-    // Source is unavailable; checked after the guarded block so neither path has dead code.
-    bool bChannelsExtracted = false;
-
-#if WITH_EDITORONLY_DATA
-    const ETextureSourceFormat SourceFormat = SourceTex->Source.GetFormat();
-    const int64 NumSourcePixels = (int64)SrcWidth * (int64)SrcHeight;
-
-    // Read-only lock: see UpdatePreview.
-    const uint8* Locked = SourceTex->Source.LockMipReadOnly(0);
-    if (!Locked)
+    for (const FChannelPackerWarning& Warning : Result.Warnings)
     {
-        ShowNotification(GetLocalizedMessage(
-            TEXT("ErrorLockFailed"),
-            TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
-            TEXT("テクスチャデータへのアクセスに失敗しました。テクスチャが破損しているか、使用中の可能性があります。テクスチャを再インポートしてください。")), false);
-        return FReply::Handled();
+        ShowNotification(FText::FromString(Warning.Message), false);
     }
-
-    const bool bFormatSupported = VisitChannelSampler(Locked, SourceFormat, [&](auto&& Sample)
-    {
-        // One channel at a time; each extraction parallelizes internally over pixels.
-        for (int32 Index = 0; Index < SelectedChannels.Num(); ++Index)
-        {
-            ExtractChannelBytes(Sample, SelectedChannels[Index], NumSourcePixels, ChannelData[Index]);
-        }
-    });
-
-    SourceTex->Source.UnlockMip(0);
-
-    if (!bFormatSupported)
-    {
-        UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)SourceFormat, *SourceTex->GetName());
-        ShowNotification(GetLocalizedMessage(
-            TEXT("ErrorUnsupportedFormat"),
-            TEXT("Texture format not supported. Please convert to PNG or TGA."),
-            TEXT("テクスチャ形式がサポートされていません。PNGまたはTGAに変換してください。")), false);
-        return FReply::Handled();
-    }
-
-    bChannelsExtracted = true;
-#endif
-
-    if (!bChannelsExtracted)
-    {
-        UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
-        ShowNotification(GetLocalizedMessage(
-            TEXT("ErrorNoEditorData"),
-            TEXT("This plugin requires Editor-only data to function. Ensure the project is built with editor support."),
-            TEXT("このプラグインはエディター専用データが必要です。プロジェクトがエディターサポート付きでビルドされていることを確認してください。")), false);
-        return FReply::Handled();
-    }
-
-    if (SlowTask.ShouldCancel())
-    {
-        ShowNotification(CancelMsg, false);
-        return FReply::Handled();
-    }
-
-    // ---------------------------------------------------------
-    // STEP 2: Write One Grayscale Asset per Channel (Game Thread)
-    // ---------------------------------------------------------
-    int32 SavedCount = 0;
-    bool bCancelled = false;
-
-    for (int32 SelectionIndex = 0; SelectionIndex < SelectedChannels.Num(); ++SelectionIndex)
-    {
-        const int32 ChannelIndex = SelectedChannels[SelectionIndex];
-        const FString AssetName = GetChannelAssetName(ChannelIndex);
-        const FString PackageName = GetChannelPackageName(ChannelIndex);
-
-        SlowTask.EnterProgressFrame(1.0f, FText::Format(
-            GetLocalizedMessage(TEXT("ProgressSavingChannel"), TEXT("Saving {0}..."), TEXT("{0} を保存中...")),
-            FText::FromString(AssetName)
-        ));
-
-        if (SlowTask.ShouldCancel())
-        {
-            bCancelled = true;
-            break;
-        }
-
-        const TArray<uint8>& Data = ChannelData[SelectionIndex];
-        if ((int64)Data.Num() != (int64)SrcWidth * (int64)SrcHeight)
-        {
-            UE_LOG(LogTexturePacker, Error, TEXT("Unexpected channel data size for %s (%d, expected %lld). Skipping."),
-                *AssetName, Data.Num(), (int64)SrcWidth * (int64)SrcHeight);
-            continue;
-        }
-
-        TStrongObjectPtr<UPackage> PackagePtr(CreatePackage(*PackageName));
-        UPackage* Package = PackagePtr.Get();
-        if (!Package)
-        {
-            ShowNotification(GetLocalizedMessage(
-                TEXT("ErrorPackageCreation"),
-                TEXT("Failed to create package."),
-                TEXT("パッケージの作成に失敗しました。")), false);
-            continue;
-        }
-        Package->FullyLoad();
-
-        UTexture2D* NewTexture = NewObject<UTexture2D>(Package, FName(*AssetName), RF_Public | RF_Standalone | RF_MarkAsRootSet);
-
-#if WITH_EDITORONLY_DATA
-        NewTexture->Source.Init(SrcWidth, SrcHeight, 1, 1, TSF_G8);
-        uint8* MipData = NewTexture->Source.LockMip(0);
-        if (MipData)
-        {
-            FMemory::Memcpy(MipData, Data.GetData(), Data.Num());
-        }
-        NewTexture->Source.UnlockMip(0);
-#endif
-
-        // Extracted channels are data, not color: grayscale compression, linear color space.
-        NewTexture->CompressionSettings = TC_Grayscale;
-        NewTexture->SRGB = false;
-
-        NewTexture->UpdateResource();
-        NewTexture->PostEditChange();
-
-        Package->MarkPackageDirty();
-        FAssetRegistryModule::AssetCreated(NewTexture);
-        ++SavedCount;
-    }
-
-    if (bCancelled)
-    {
-        ShowNotification(CancelMsg, false);
-    }
-    else if (SavedCount > 0)
-    {
-        ShowNotification(FText::Format(
-            GetLocalizedMessage(
-                TEXT("SuccessUnpacked"),
-                TEXT("Unpacked {0} texture(s) to {1}"),
-                TEXT("{0} 枚のテクスチャを {1} にアンパックしました")
-            ),
-            FText::AsNumber(SavedCount),
-            FText::FromString(OutputPackagePath)), true);
-    }
-    else
-    {
-        ShowNotification(GetLocalizedMessage(
-            TEXT("ErrorUnpackNothingSaved"),
-            TEXT("No textures could be saved."),
-            TEXT("テクスチャを保存できませんでした。")), false);
-    }
+    ShowNotification(FText::FromString(Result.Message), Result.Status == EChannelPackerStatus::Succeeded);
 
     return FReply::Handled();
 }

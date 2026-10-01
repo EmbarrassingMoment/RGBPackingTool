@@ -22,6 +22,9 @@ public class TextureChannelPacker : ModuleRules
             new string[]
             {
                 "Core",
+                // Public headers declare reflected types (USTRUCT/UCLASS) and a Blueprint function library.
+                "CoreUObject",
+                "Engine",
                 // ... add other public dependencies that you statically link with here ...
             }
         );
@@ -29,8 +32,6 @@ public class TextureChannelPacker : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
-                "CoreUObject",
-                "Engine",
                 "Slate",
                 "SlateCore",
                 "InputCore",

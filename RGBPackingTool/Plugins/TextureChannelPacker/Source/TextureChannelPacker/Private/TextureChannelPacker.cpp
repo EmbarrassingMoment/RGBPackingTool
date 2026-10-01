@@ -1,5 +1,6 @@
 #include "TextureChannelPacker.h"
 #include "TextureChannelPackerShared.h"
+#include "TextureChannelPackerCore.h"
 #include "TextureChannelUnpacker.h"
 #include "UObject/StrongObjectPtr.h"
 #include "ToolMenus.h"
@@ -23,6 +24,7 @@
 #endif
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
+#include "Misc/PackageName.h"
 #include "Misc/MessageDialog.h"
 #include "Math/UnrealMathUtility.h"
 #include "Widgets/Input/SComboButton.h"
@@ -31,12 +33,7 @@
 #include "ContentBrowserModule.h"
 #include "IContentBrowserSingleton.h"
 #include "ThumbnailRendering/ThumbnailManager.h"
-#include "Misc/ScopedSlowTask.h"
 #include "Async/ParallelFor.h"
-#include "Serialization/JsonWriter.h"
-#include "Serialization/JsonSerializer.h"
-#include "Misc/FileHelper.h"
-#include "HAL/PlatformFileManager.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -166,112 +163,13 @@ FChannelPackerPreset FChannelPackerPreset::FromJson(const TSharedPtr<FJsonObject
     return Preset;
 }
 
-// ========== Preset Persistence Helpers ==========
-
-static FString GetPresetsDirectory()
-{
-    return FPaths::ProjectSavedDir() / TEXT("TextureChannelPacker") / TEXT("Presets");
-}
-
-static FString SanitizePresetFileName(const FString& Name)
-{
-    FString Sanitized = Name;
-    // Remove characters that are invalid in filenames
-    Sanitized = Sanitized.Replace(TEXT("/"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("\\"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT(":"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("*"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("?"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("\""), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("<"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT(">"), TEXT("_"));
-    Sanitized = Sanitized.Replace(TEXT("|"), TEXT("_"));
-    return Sanitized;
-}
-
-static TArray<FChannelPackerPreset> LoadUserPresetsFromDisk()
-{
-    TArray<FChannelPackerPreset> Result;
-    FString PresetsDir = GetPresetsDirectory();
-
-    TArray<FString> FoundFiles;
-    IFileManager::Get().FindFiles(FoundFiles, *(PresetsDir / TEXT("*.json")), true, false);
-
-    for (const FString& FileName : FoundFiles)
-    {
-        FString FilePath = PresetsDir / FileName;
-        FString JsonString;
-        if (FFileHelper::LoadFileToString(JsonString, *FilePath))
-        {
-            TSharedPtr<FJsonObject> JsonObject;
-            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-            if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
-            {
-                FChannelPackerPreset Preset = FChannelPackerPreset::FromJson(JsonObject);
-                if (!Preset.PresetName.IsEmpty())
-                {
-                    Result.Add(Preset);
-                    UE_LOG(LogTexturePacker, Log, TEXT("Loaded user preset: %s"), *Preset.PresetName);
-                }
-            }
-            else
-            {
-                UE_LOG(LogTexturePacker, Warning, TEXT("Failed to parse preset file: %s"), *FilePath);
-            }
-        }
-    }
-    return Result;
-}
-
-static bool SavePresetToDisk(const FChannelPackerPreset& Preset)
-{
-    FString PresetsDir = GetPresetsDirectory();
-    IFileManager::Get().MakeDirectory(*PresetsDir, true);
-
-    FString FileName = SanitizePresetFileName(Preset.PresetName) + TEXT(".json");
-    FString FilePath = PresetsDir / FileName;
-
-    TSharedPtr<FJsonObject> JsonObject = Preset.ToJson();
-    FString JsonString;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
-    if (FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer))
-    {
-        return FFileHelper::SaveStringToFile(JsonString, *FilePath);
-    }
-    return false;
-}
-
-static bool DeletePresetFromDisk(const FString& PresetName)
-{
-    FString PresetsDir = GetPresetsDirectory();
-    FString FileName = SanitizePresetFileName(PresetName) + TEXT(".json");
-    FString FilePath = PresetsDir / FileName;
-    return IFileManager::Get().Delete(*FilePath);
-}
-
 void FTextureChannelPackerModule::StartupModule()
 {
-    // Initialize Compression Options
-    FCompressionOption MasksOption;
-    MasksOption.InternalName = "Masks";
-    MasksOption.CompressionSetting = TC_Masks;
-    MasksOption.DisplayNameEn = "Masks (Recommended)";
-    MasksOption.DisplayNameJa = "マスク (推奨)";
-    CompressionOptions.Add(MakeShared<FCompressionOption>(MasksOption));
-
-    FCompressionOption GrayscaleOption;
-    GrayscaleOption.InternalName = "Grayscale";
-    GrayscaleOption.CompressionSetting = TC_Grayscale;
-    GrayscaleOption.DisplayNameEn = "Grayscale";
-    GrayscaleOption.DisplayNameJa = "グレースケール";
-    CompressionOptions.Add(MakeShared<FCompressionOption>(GrayscaleOption));
-
-    FCompressionOption DefaultOption;
-    DefaultOption.InternalName = "Default";
-    DefaultOption.CompressionSetting = TC_Default;
-    DefaultOption.DisplayNameEn = "Default";
-    DefaultOption.DisplayNameJa = "デフォルト";
-    CompressionOptions.Add(MakeShared<FCompressionOption>(DefaultOption));
+    // Initialize Compression Options (shared with headless callers via TextureChannelPackerCore)
+    for (FCompressionOption& Option : TextureChannelPackerCore::GetCompressionOptions())
+    {
+        CompressionOptions.Add(MakeShared<FCompressionOption>(MoveTemp(Option)));
+    }
 
     CurrentCompressionOption = CompressionOptions[0];
 
@@ -310,7 +208,13 @@ void FTextureChannelPackerModule::StartupModule()
         .SetMenuType(ETabSpawnerMenuType::Hidden)
         .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Layout"));
 
-    // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file format
+    // Menus are registered once ToolMenus is ready. ToolMenus does not run startup callbacks
+    // while its UI is disabled (e.g. in commandlets), so headless runs leave the menus alone.
+    UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FTextureChannelPackerModule::RegisterMenus));
+}
+
+void FTextureChannelPackerModule::RegisterMenus()
+{
     FToolMenuOwnerScoped OwnerScoped(this);
     UToolMenus* ToolMenus = UToolMenus::Get();
 
@@ -339,6 +243,7 @@ void FTextureChannelPackerModule::ShutdownModule()
 {
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
+    UToolMenus::UnRegisterStartupCallback(this);
     UToolMenus::UnregisterOwner(this);
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
 
@@ -1264,353 +1169,72 @@ void FTextureChannelPackerModule::AutoGenerateFileName()
         return;
     }
 
-    // Find Common Prefix
-    FString CommonPrefix = InputNames[0];
-    for (int32 i = 1; i < InputNames.Num(); ++i)
-    {
-        const FString& CurrentName = InputNames[i];
-        int32 CommonLen = 0;
-        int32 MaxLen = FMath::Min(CommonPrefix.Len(), CurrentName.Len());
-        for (int32 CharIdx = 0; CharIdx < MaxLen; ++CharIdx)
-        {
-            if (CommonPrefix[CharIdx] == CurrentName[CharIdx])
-            {
-                CommonLen++;
-            }
-            else
-            {
-                break;
-            }
-        }
-        CommonPrefix = CommonPrefix.Left(CommonLen);
-    }
-
-    FString BaseName;
-    if (CommonPrefix.Len() >= 3)
-    {
-        BaseName = CommonPrefix;
-    }
-    else
-    {
-        BaseName = InputNames[0]; // First valid input
-    }
-
-    // Enforce "T_" prefix
-    if (!BaseName.StartsWith(TEXT("T_")))
-    {
-        BaseName = TEXT("T_") + BaseName;
-    }
-
-    // Remove trailing underscores
-    while (BaseName.EndsWith(TEXT("_")))
-    {
-        BaseName.LeftChopInline(1);
-    }
-
-    OutputFileName = BaseName + CurrentFileNameSuffix;
+    OutputFileName = TextureChannelPackerCore::MakePackedAssetName(InputNames, CurrentFileNameSuffix);
 }
 
 void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int32 Width, int32 Height)
 {
     check(IsInGameThread());
 
-    FPhaseTimer TotalTimer(TEXT("Pack total"));
+    FChannelPackerPackRequest Request = BuildPackRequest();
+    Request.OutputPath = FPackageName::GetLongPackagePath(PackageName);
+    Request.OutputName = FPackageName::GetShortName(PackageName);
+    Request.Width = Width;
+    Request.Height = Height;
 
-    // Initialize progress dialog with 6 steps total
-    FScopedSlowTask SlowTask(6.0f, GetLocalizedMessage(
-        TEXT("ProgressProcessing"),
-        TEXT("Processing Textures..."),
-        TEXT("テクスチャを処理中...")
-    ));
-    SlowTask.MakeDialog(true); // true = cancellable
+    // OnGenerateClicked has already confirmed any overwrite, and the editor workflow leaves the
+    // new package dirty for the user to save.
+    Request.OverwritePolicy = EChannelPackerOverwritePolicy::Overwrite;
+    Request.bSave = false;
 
-    // Create the package using TStrongObjectPtr for RAII
-    TStrongObjectPtr<UPackage> PackagePtr(CreatePackage(*PackageName));
-    UPackage* Package = PackagePtr.Get();
+    TextureChannelPackerCore::FExecutionOptions Options;
+    Options.bShowProgressDialog = true;
 
-    if (!Package)
+    const FChannelPackerResult Result = TextureChannelPackerCore::Pack(Request, Options);
+
+    // Unreadable inputs were packed with the slot default; warn about each one.
+    for (const FChannelPackerWarning& Warning : Result.Warnings)
     {
-        ShowNotification(
-            GetLocalizedMessage(
-                TEXT("ErrorPackageCreation"),
-                TEXT("Failed to create package."),
-                TEXT("パッケージの作成に失敗しました。")
-            ),
-            false
-        );
-        return;
+        ShowNotification(FText::FromString(Warning.Message), false);
     }
 
-    Package->FullyLoad();
-
-    // Helper lambda for cleanup on early exit (Cancel/Error)
-    auto CleanupOnEarlyExit = [&Package, &PackageName]()
+    if (Result.Status == EChannelPackerStatus::Succeeded)
     {
-        if (Package && !Package->IsDirty())
-        {
-            UE_LOG(LogTexturePacker, Warning, TEXT("Package creation cancelled. Cleaning up: %s"), *PackageName);
-            Package->ClearFlags(RF_Standalone | RF_MarkAsRootSet);
-            Package->MarkAsGarbage();
-        }
-    };
-
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressPackageCreated"),
-        TEXT("Package created. Loading input textures..."),
-        TEXT("パッケージを作成しました。入力テクスチャを読み込み中...")
-    ));
-
-    if (SlowTask.ShouldCancel())
-    {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
+        FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
+        ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
     }
-
-    // Create the Texture2D
-    FName TextureName = FName(*FPaths::GetBaseFilename(PackageName));
-    UTexture2D* NewTexture = NewObject<UTexture2D>(Package, TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
-
-    // ---------------------------------------------------------
-    // STEP 1: Extract Raw Data from Inputs (Game Thread)
-    // ---------------------------------------------------------
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressExtracting"),
-        TEXT("Extracting source data..."),
-        TEXT("ソースデータを抽出中...")
-    ));
-
-    if (SlowTask.ShouldCancel())
+    else
     {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
+        ShowNotification(FText::FromString(Result.Message), false);
     }
+}
 
-    // Lock the inputs' source mips read-only for the duration of processing. No full-resolution
-    // copy is made: the workers read straight from the locked mips. Read locks are recursive,
-    // so the same texture assigned to several slots is fine. Any early return below releases
-    // the locks through the destructors.
-    FLockedTextureSource RawInputs[4]; // R, G, B, A
+FChannelPackerPackRequest FTextureChannelPackerModule::BuildPackRequest() const
+{
+    FChannelPackerPackRequest Request;
 
-    {
-        FPhaseTimer ExtractTimer(TEXT("Pack extract"));
-        RawInputs[0] = FLockedTextureSource::Lock(InputTextureR.Get());
-        RawInputs[1] = FLockedTextureSource::Lock(InputTextureG.Get());
-        RawInputs[2] = FLockedTextureSource::Lock(InputTextureB.Get());
-        RawInputs[3] = FLockedTextureSource::Lock(InputTextureA.Get());
-    }
+    Request.Red.Texture = InputTextureR.Get();
+    Request.Green.Texture = InputTextureG.Get();
+    Request.Blue.Texture = InputTextureB.Get();
+    Request.Alpha.Texture = InputTextureA.Get();
 
-    // ---------------------------------------------------------
-    // STEP 2: Process Data in Parallel (Background Threads)
-    // ---------------------------------------------------------
-    SlowTask.EnterProgressFrame(2.0f, GetLocalizedMessage(
-        TEXT("ProgressProcessingParallel"),
-        TEXT("Resizing and processing channels..."),
-        TEXT("チャンネルのリサイズと処理中...")
-    ));
+    Request.Red.SourceChannel = SourceChannelR;
+    Request.Green.SourceChannel = SourceChannelG;
+    Request.Blue.SourceChannel = SourceChannelB;
+    Request.Alpha.SourceChannel = SourceChannelA;
 
-    if (SlowTask.ShouldCancel())
-    {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
+    Request.Red.bInvert = bInvertR;
+    Request.Green.bInvert = bInvertG;
+    Request.Blue.bInvert = bInvertB;
+    Request.Alpha.bInvert = bInvertA;
 
-    TArray<FTextureProcessResult> ProcessedResults;
-    ProcessedResults.SetNum(4);
-
-    const ESourceChannel SourceChannels[4] = { SourceChannelR, SourceChannelG, SourceChannelB, SourceChannelA };
-
-    {
-        FPhaseTimer ProcessTimer(TEXT("Pack process"));
-        ParallelFor(4, [&](int32 Index)
-        {
-            ProcessedResults[Index] = ProcessTextureSourceData(RawInputs[Index], Width, Height, SourceChannels[Index]);
-        });
-    }
-
-    if (SlowTask.ShouldCancel())
-    {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
-
-    // Check for errors
-    for (const auto& Res : ProcessedResults)
-    {
-        if (!Res.bSuccess && !Res.ErrorMessage.IsEmpty())
-        {
-            ShowNotification(Res.ErrorMessage, false);
-            // We continue, treating it as black/default, but user is warned.
-            // Alternatively, return here to abort.
-        }
-    }
-
-    // Check for errors from texture locking, then release the source mips: everything
-    // needed from here on lives in ProcessedResults.
-    for (FLockedTextureSource& Input : RawInputs)
-    {
-        if (!Input.bIsValid && !Input.ErrorMessage.IsEmpty())
-        {
-            ShowNotification(Input.ErrorMessage, false);
-            // Continue processing - the channel will be filled with default values
-        }
-        Input.Release();
-    }
-
-#if WITH_EDITORONLY_DATA
-    // ---------------------------------------------------------
-    // STEP 3: Write to Output Texture (Game Thread)
-    // ---------------------------------------------------------
-    // Initialize Source
-    NewTexture->Source.Init(Width, Height, 1, 1, TSF_BGRA8);
-
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressWritingPixels"),
-        TEXT("Writing pixel data..."),
-        TEXT("ピクセルデータを書き込み中...")
-    ));
-
-    if (SlowTask.ShouldCancel())
-    {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
-
-    // Lock and Write Pixels directly to Source
-    TUniquePtr<FPhaseTimer> WriteTimer = MakeUnique<FPhaseTimer>(TEXT("Pack write"));
-    uint8* MipData = NewTexture->Source.LockMip(0);
-    if (MipData)
-    {
-        // Invert channels if requested
-        auto InvertChannel = [](TArray<uint8>& Data)
-        {
-            for (int32 i = 0; i < Data.Num(); ++i)
-            {
-                Data[i] = 255 - Data[i];
-            }
-        };
-
-        if (bInvertR && ProcessedResults[0].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[0].ProcessedData);
-        if (bInvertG && ProcessedResults[1].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[1].ProcessedData);
-        if (bInvertB && ProcessedResults[2].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[2].ProcessedData);
-        if (bInvertA && ProcessedResults[3].ProcessedData.Num() > 0) InvertChannel(ProcessedResults[3].ProcessedData);
-
-        const uint8* TempR = ProcessedResults[0].ProcessedData.Num() > 0 ? ProcessedResults[0].ProcessedData.GetData() : nullptr;
-        const uint8* TempG = ProcessedResults[1].ProcessedData.Num() > 0 ? ProcessedResults[1].ProcessedData.GetData() : nullptr;
-        const uint8* TempB = ProcessedResults[2].ProcessedData.Num() > 0 ? ProcessedResults[2].ProcessedData.GetData() : nullptr;
-        const uint8* TempA = ProcessedResults[3].ProcessedData.Num() > 0 ? ProcessedResults[3].ProcessedData.GetData() : nullptr;
-
-        // Pre-fill defaults for null channels to eliminate branches in the main loop
-        TArray<uint8> DefaultR, DefaultG, DefaultB, DefaultA;
-
-        const uint8* PtrR = TempR;
-        const uint8* PtrG = TempG;
-        const uint8* PtrB = TempB;
-        const uint8* PtrA = TempA;
-
-        if (!PtrR)
-        {
-            DefaultR.Init(0, Width * Height);
-            if (bInvertR) InvertChannel(DefaultR);
-            PtrR = DefaultR.GetData();
-        }
-        if (!PtrG)
-        {
-            DefaultG.Init(0, Width * Height);
-            if (bInvertG) InvertChannel(DefaultG);
-            PtrG = DefaultG.GetData();
-        }
-        if (!PtrB)
-        {
-            DefaultB.Init(0, Width * Height);
-            if (bInvertB) InvertChannel(DefaultB);
-            PtrB = DefaultB.GetData();
-        }
-        if (!PtrA)
-        {
-            DefaultA.Init(255, Width * Height);
-            if (bInvertA) InvertChannel(DefaultA);
-            PtrA = DefaultA.GetData();
-        }
-
-        // Parallel, branch-free pixel writing
-        ParallelFor(Width * Height, [MipData, PtrR, PtrG, PtrB, PtrA](int32 i)
-        {
-            int32 Offset = i * 4;
-            MipData[Offset + 0] = PtrB[i]; // B
-            MipData[Offset + 1] = PtrG[i]; // G
-            MipData[Offset + 2] = PtrR[i]; // R
-            MipData[Offset + 3] = PtrA[i]; // A
-        });
-    }
-    NewTexture->Source.UnlockMip(0);
-    WriteTimer.Reset();
-#endif
-
-    SlowTask.EnterProgressFrame(1.0f, GetLocalizedMessage(
-        TEXT("ProgressFinalizing"),
-        TEXT("Finalizing texture..."),
-        TEXT("テクスチャを最終処理中...")
-    ));
-
-    if (SlowTask.ShouldCancel())
-    {
-        CleanupOnEarlyExit();
-        FText CancelMsg = GetLocalizedMessage(
-            TEXT("OperationCancelled"),
-            TEXT("Texture generation was cancelled by user."),
-            TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
-        );
-        ShowNotification(CancelMsg, false);
-        return;
-    }
-
-    // Final settings
-    NewTexture->CompressionSettings = GetSelectedCompressionSettings();
-
-    // Even if TC_Default is selected, treat it as linear (sRGB=false) for channel packing purposes.
-    NewTexture->SRGB = false;
-
-    {
-        FPhaseTimer FinalizeTimer(TEXT("Pack finalize"));
-        NewTexture->UpdateResource();
-        NewTexture->PostEditChange();
-    }
-
-    Package->MarkPackageDirty();
-    FAssetRegistryModule::AssetCreated(NewTexture);
-
-    FText FormatPattern = GetLocalizedMessage(TEXT("SuccessTextureSaved"), TEXT("Texture Saved: {0}"), TEXT("テクスチャを保存しました: {0}"));
-    ShowNotification(FText::Format(FormatPattern, FText::FromString(PackageName)), true);
+    Request.Width = TargetWidth;
+    Request.Height = TargetHeight;
+    Request.OutputPath = OutputPackagePath;
+    Request.OutputName = OutputFileName;
+    Request.FileNameSuffix = CurrentFileNameSuffix;
+    Request.Compression = CurrentCompressionOption.IsValid() ? CurrentCompressionOption->InternalName : FString(TEXT("Masks"));
+    return Request;
 }
 
 void FTextureChannelPackerModule::UpdatePreview()
@@ -1770,15 +1394,6 @@ void FTextureChannelPackerModule::ShowNotification(const FText& Message, bool bS
     TextureChannelPackerUtils::ShowNotification(Message, bSuccess);
 }
 
-TextureCompressionSettings FTextureChannelPackerModule::GetSelectedCompressionSettings() const
-{
-    if (CurrentCompressionOption.IsValid())
-    {
-        return CurrentCompressionOption->CompressionSetting;
-    }
-    return TC_Masks; // Fallback
-}
-
 // ========== Preset System Implementation ==========
 
 FText FTextureChannelPackerModule::GetCurrentRedLabel() const
@@ -1819,74 +1434,22 @@ FText FTextureChannelPackerModule::GetCurrentAlphaLabel() const
 
 void FTextureChannelPackerModule::InitializeBuiltInPresets()
 {
-    // Custom (sentinel - always first)
+    for (FChannelPackerPreset& Preset : TextureChannelPackerCore::GetBuiltInPresets())
     {
-        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
-        Preset->PresetName = TEXT("Custom");
-        Preset->bIsBuiltIn = true;
-        Preset->RedLabelEn = TEXT("Red Channel Input");
-        Preset->RedLabelJa = TEXT("Red Channel Input");
-        Preset->GreenLabelEn = TEXT("Green Channel Input");
-        Preset->GreenLabelJa = TEXT("Green Channel Input");
-        Preset->BlueLabelEn = TEXT("Blue Channel Input");
-        Preset->BlueLabelJa = TEXT("Blue Channel Input");
-        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
-        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
-        Preset->FileNameSuffix = TEXT("_Packed");
-        Preset->DefaultCompressionName = TEXT("Masks");
-        // Unpack suffixes keep the plain _R/_G/_B/_A defaults for Custom.
-        CustomPreset = Preset;
-        Presets.Add(Preset);
-    }
+        TSharedPtr<FChannelPackerPreset> PresetPtr = MakeShared<FChannelPackerPreset>(MoveTemp(Preset));
 
-    // ORM (default)
-    {
-        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
-        Preset->PresetName = TEXT("ORM");
-        Preset->bIsBuiltIn = true;
-        Preset->RedLabelEn = TEXT("Red Channel Input (e.g. Ambient Occlusion)");
-        Preset->RedLabelJa = TEXT("Red Channel Input (例: アンビエントオクルージョン)");
-        Preset->GreenLabelEn = TEXT("Green Channel Input (e.g. Roughness)");
-        Preset->GreenLabelJa = TEXT("Green Channel Input (例: ラフネス)");
-        Preset->BlueLabelEn = TEXT("Blue Channel Input (e.g. Metallic)");
-        Preset->BlueLabelJa = TEXT("Blue Channel Input (例: メタリック)");
-        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
-        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
-        Preset->FileNameSuffix = TEXT("_ORM");
-        Preset->DefaultCompressionName = TEXT("Masks");
-        Preset->UnpackSuffixR = TEXT("_AO");
-        Preset->UnpackSuffixG = TEXT("_Roughness");
-        Preset->UnpackSuffixB = TEXT("_Metallic");
-        Preset->UnpackSuffixA = TEXT("_A");
-        Presets.Add(Preset);
-    }
-
-    // MRA
-    {
-        TSharedPtr<FChannelPackerPreset> Preset = MakeShared<FChannelPackerPreset>();
-        Preset->PresetName = TEXT("MRA");
-        Preset->bIsBuiltIn = true;
-        Preset->RedLabelEn = TEXT("Red Channel Input (e.g. Metallic)");
-        Preset->RedLabelJa = TEXT("Red Channel Input (例: メタリック)");
-        Preset->GreenLabelEn = TEXT("Green Channel Input (e.g. Roughness)");
-        Preset->GreenLabelJa = TEXT("Green Channel Input (例: ラフネス)");
-        Preset->BlueLabelEn = TEXT("Blue Channel Input (e.g. Ambient Occlusion)");
-        Preset->BlueLabelJa = TEXT("Blue Channel Input (例: アンビエントオクルージョン)");
-        Preset->AlphaLabelEn = TEXT("Alpha Channel Input (Optional)");
-        Preset->AlphaLabelJa = TEXT("Alpha Channel Input (任意)");
-        Preset->FileNameSuffix = TEXT("_MRA");
-        Preset->DefaultCompressionName = TEXT("Masks");
-        Preset->UnpackSuffixR = TEXT("_Metallic");
-        Preset->UnpackSuffixG = TEXT("_Roughness");
-        Preset->UnpackSuffixB = TEXT("_AO");
-        Preset->UnpackSuffixA = TEXT("_A");
-        Presets.Add(Preset);
+        // "Custom" is the sentinel preset and always comes first.
+        if (!CustomPreset.IsValid())
+        {
+            CustomPreset = PresetPtr;
+        }
+        Presets.Add(PresetPtr);
     }
 }
 
 void FTextureChannelPackerModule::LoadPresetsFromDisk()
 {
-    TArray<FChannelPackerPreset> UserPresets = LoadUserPresetsFromDisk();
+    TArray<FChannelPackerPreset> UserPresets = TextureChannelPackerCore::LoadUserPresets();
     for (FChannelPackerPreset& Preset : UserPresets)
     {
         Presets.Add(MakeShared<FChannelPackerPreset>(MoveTemp(Preset)));
@@ -1973,7 +1536,7 @@ void FTextureChannelPackerModule::SaveCurrentAsPreset(const FString& Name)
     NewPreset.DefaultSourceChannelA = SourceChannelA;
 
     // Save to disk
-    if (SavePresetToDisk(NewPreset))
+    if (TextureChannelPackerCore::SaveUserPreset(NewPreset))
     {
         // Check if a preset with the same name already exists (update it)
         bool bFound = false;
@@ -2031,7 +1594,7 @@ void FTextureChannelPackerModule::DeleteCurrentPreset()
     FString PresetName = CurrentPreset->PresetName;
 
     // Delete from disk
-    DeletePresetFromDisk(PresetName);
+    TextureChannelPackerCore::DeleteUserPreset(PresetName);
 
     // Remove from array
     Presets.Remove(CurrentPreset);

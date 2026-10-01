@@ -123,6 +123,9 @@ namespace TextureChannelPackerUtils
          */
         FText ErrorMessage;
 
+        /** Locale-independent identifier for ErrorMessage (e.g. "ErrorLockFailed"). Empty if no error occurred. */
+        FString ErrorCode;
+
         FLockedTextureSource() = default;
         ~FLockedTextureSource() { Release(); }
 
@@ -269,6 +272,10 @@ namespace TextureChannelPackerUtils
     {
         TArray<uint8> ProcessedData;
         FText ErrorMessage;
+
+        /** Locale-independent identifier for ErrorMessage (e.g. "ErrorUnsupportedFormat"). */
+        FString ErrorCode;
+
         bool bSuccess = true;
     };
 

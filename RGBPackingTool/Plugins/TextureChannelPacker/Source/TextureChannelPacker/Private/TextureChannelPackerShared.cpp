@@ -107,6 +107,7 @@ FLockedTextureSource& FLockedTextureSource::operator=(FLockedTextureSource&& Oth
         TextureName = MoveTemp(Other.TextureName);
         bIsValid = Other.bIsValid;
         ErrorMessage = MoveTemp(Other.ErrorMessage);
+        ErrorCode = MoveTemp(Other.ErrorCode);
         LockedTexture = Other.LockedTexture;
 
         Other.Data = nullptr;
@@ -170,6 +171,7 @@ FLockedTextureSource FLockedTextureSource::Lock(UTexture2D* SourceTex)
         UE_LOG(LogTexturePacker, Error,
             TEXT("Texture too large to process: %s (Width: %d, Height: %d, Pixels: %lld)"),
             *Result.TextureName, Result.Width, Result.Height, NumPixels);
+        Result.ErrorCode = TEXT("ErrorTextureTooLarge");
         Result.ErrorMessage = GetLocalizedMessage(
             TEXT("ErrorTextureTooLarge"),
             TEXT("Input texture is too large to process. Reduce its resolution."),
@@ -184,6 +186,7 @@ FLockedTextureSource FLockedTextureSource::Lock(UTexture2D* SourceTex)
     if (!SrcData)
     {
         UE_LOG(LogTexturePacker, Warning, TEXT("Failed to lock source mip for texture: %s"), *Result.TextureName);
+        Result.ErrorCode = TEXT("ErrorLockFailed");
         Result.ErrorMessage = GetLocalizedMessage(
             TEXT("ErrorLockFailed"),
             TEXT("Failed to access texture data. The texture may be corrupted or in use. Try reimporting the texture."),
@@ -197,6 +200,7 @@ FLockedTextureSource FLockedTextureSource::Lock(UTexture2D* SourceTex)
     Result.bIsValid = true;
 #else
     UE_LOG(LogTexturePacker, Error, TEXT("TextureChannelPacker requires WITH_EDITORONLY_DATA to access Source."));
+    Result.ErrorCode = TEXT("ErrorNoEditorData");
     Result.ErrorMessage = GetLocalizedMessage(
         TEXT("ErrorNoEditorData"),
         TEXT("This plugin requires Editor-only data to function. Ensure the project is built with editor support."),
@@ -258,6 +262,7 @@ FTextureProcessResult ProcessTextureSourceData(const FLockedTextureSource& Input
     {
         UE_LOG(LogTexturePacker, Error, TEXT("Unsupported Source Format: %d for texture: %s"), (int32)Input.Format, *Input.TextureName);
         Result.bSuccess = false;
+        Result.ErrorCode = TEXT("ErrorUnsupportedFormat");
         Result.ErrorMessage = GetLocalizedMessage(
             TEXT("ErrorUnsupportedFormat"),
             TEXT("Texture format not supported. Please convert to PNG or TGA."),
