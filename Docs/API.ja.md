@@ -24,6 +24,25 @@
 *   **実装**: `Private/TextureChannelPacker.cpp`
 *   **共有ユーティリティ**: `Private/TextureChannelPackerShared.h` / `.cpp`（名前空間 `TextureChannelPackerUtils`）
 *   **アンパックタブ**: `Private/TextureChannelUnpacker.h` / `.cpp`（クラス `FTextureChannelUnpacker`）
+*   **処理コア**: `Private/TextureChannelPackerCore.h` / `.cpp`（名前空間 `TextureChannelPackerCore`）— UI に依存しないパック / アンパック、命名、圧縮設定、プリセットの保存
+*   **リクエスト / 結果の型**: `Public/TextureChannelPackerTypes.h`（リフレクション対応の `USTRUCT` / `UENUM`）
+*   **関数ライブラリ**: `Public/TextureChannelPackerLibrary.h`（クラス `UTextureChannelPackerLibrary`。Blueprint / Python / Remote Control 用）
+*   **Commandlet**: `Private/TextureChannelPackerCommandlet.h` / `.cpp`（クラス `UTextureChannelPackerCommandlet`、`-run=TextureChannelPacker`）
+
+### レイヤー構成
+
+```
+ Slate UI（パック / アンパックタブ）   UTextureChannelPackerLibrary   UTextureChannelPackerCommandlet
+   ダイアログ・通知                      （Blueprint / Python /         （JSON ジョブ -> JSON 結果）
+            \                             Remote Control）                    /
+             \                                 |                             /
+              +------------ TextureChannelPackerCore::Pack / Unpack --------+
+                              （ダイアログなし。FChannelPackerResult を返す）
+                                                |
+                              TextureChannelPackerUtils（サンプリング、リサイズ）
+```
+
+UI は確認ダイアログと通知を従来どおり担当し、そのうえで `OverwritePolicy = Overwrite`、`bSave = false`（保存はユーザーが行う）、キャンセル可能な進捗ダイアログ付きでコアを呼び出します。ヘッドレスの呼び出し側は既定値（`Fail`、`bSave = true`、ダイアログなし）を使います。呼び出し側向けの API は [ヘッドレス実行](Headless.ja.md) を参照してください。
 
 ### パブリックインターフェース
 
@@ -52,7 +71,7 @@ public:
 *   **`OnSpawnPluginTab`**: メインの Slate UI を構築します。
 *   **`CreateChannelInputSlot`**: 各チャンネル入力用の一貫した UI ウィジェット (ラベル + オブジェクトピッカー) を作成するヘルパーメソッドです。
 *   **`OnGenerateClicked`**: 生成をトリガーする前にユーザー入力を検証します (例: 少なくとも1つのテクスチャが選択されているか、解像度が有効か)。
-*   **`CreateTexture`**: テクスチャ生成プロセスのメインドライバーです。
+*   **`CreateTexture`**: UI の状態から `FChannelPackerPackRequest` を組み立て（`BuildPackRequest`）、キャンセル可能な進捗ダイアログ付きで `TextureChannelPackerCore::Pack` を実行し、結果を通知で表示します。
 *   **`AutoGenerateFileName`**: 入力ファイル名の最長共通接頭辞 (Longest Common Prefix) に基づいて、適切な出力ファイル名を決定するヒューリスティックロジックです。
 
 ### アンパッククラス: `FTextureChannelUnpacker`
@@ -63,7 +82,7 @@ public:
 
 *   **`CreateContent`**: アンパックタブの Slate UI（プリセットドロップダウン、ソースピッカー、2×2 チャンネルグリッド、出力設定、アンパックボタン）を構築します。
 *   **`UpdatePreview`**: Mip 0 をロックして全ピクセルをちょうど1回走査し、4チャンネル分のボックスダウンサンプリングと均一チャンネル検出を同一パスで行った後、4枚のグレースケールプレビューテクスチャを構築します。フル解像度のコピーや `FColor` バッファは一切確保しません（後述の *メモリ特性* を参照）。
-*   **`OnExtractClicked`**: 入力を検証し、上書き確認（対象アセットを一覧表示する単一ダイアログ）を行った後、選択された各チャンネルにつき1枚の `TSF_G8` テクスチャアセット（`TC_Grayscale`、`SRGB = false`）をソース解像度で書き出します。
+*   **`OnExtractClicked`**: 入力を検証し、上書き確認（対象アセットを一覧表示する単一ダイアログ）を行った後、`TextureChannelPackerCore::Unpack` を実行します。コアは選択された各チャンネルにつき1枚の `TSF_G8` テクスチャアセット（`TC_Grayscale`、`SRGB = false`）をソース解像度で書き出します。
 *   **`AutoGenerateBaseName`**: ソース名から既知のパックサフィックス（各プリセットの `FileNameSuffix`）を除去し、`T_` プレフィックスを付与します。チャンネルごとの出力名は、選択中のプリセットのサフィックスを使った `<Base><UnpackSuffix>` になります。
 
 アンパックタブはモジュール所有のプリセット配列を共有します（`FChannelPackerPreset` に `UnpackSuffixR/G/B/A` フィールドが追加され、既存の JSON ファイルは `_R`/`_G`/`_B`/`_A` をデフォルトとして読み込まれます）。プリセットの保存・削除後は、モジュールが `OnPresetListChanged` を呼び出してアンパック側のドロップダウンを同期します。
@@ -101,7 +120,7 @@ struct FTextureProcessResult
 
 ## 処理フロー
 
-テクスチャ生成パイプライン (`CreateTexture`) は、応答性とスレッドセーフ性を考慮して設計されています。
+テクスチャ生成パイプライン (`TextureChannelPackerCore::Pack`。`CreateTexture` とヘッドレスの各入口から呼ばれます) は、応答性とスレッドセーフ性を考慮して設計されています。
 
 1.  **ロック (ゲームスレッド)**
     -   各入力 (R, G, B, A) に対して `FLockedTextureSource::Lock` が呼び出されます。
@@ -122,11 +141,12 @@ struct FTextureProcessResult
 
 ### アンパックフロー
 
-アンパックパスは `ProcessTextureSourceData` を経由しません。出力解像度は常にソース解像度と一致するためリサイズが不要であり、`LockMipReadOnly` でロックしたミップから、パックパスと同じサンプラーを通してチャンネルを直接読み出します。
+アンパックパス（`TextureChannelPackerCore::Unpack`）は `ProcessTextureSourceData` を経由しません。出力解像度は常にソース解像度と一致するためリサイズが不要であり、`LockMipReadOnly` でロックしたミップから、パックパスと同じサンプラーを通してチャンネルを直接読み出します。
 
 1.  **サンプラーのディスパッチ**: `VisitChannelSampler`（`TextureChannelPackerShared.h` で共有）が `ETextureSourceFormat` で1回だけ分岐し、8bit へのインライン変換を行う `uint8 (int64 PixelIndex, int32 ChannelIndex)` 形式のサンプラーを呼び出し側に渡します。ピクセルループの外側で分岐することで内側のループから条件分岐を排除し、ピクセルインデックスが 64bit のため 2GB を超えるソース（例: 16K の `RGBA32F`）も中間バッファなしで扱えます。
-2.  **抽出 (並列スレッド)**: `ExtractChannelBytes` が `ParallelFor` でサンプラーを通して読み出し、選択された各チャンネルにつき1バイト/ピクセルの配列を1つ埋めます。この間ミップはロックされたままです。
-3.  **アセット作成 (ゲームスレッド)**: 選択された各チャンネルについて `TSF_G8` の Source を初期化し、チャンネルのバイト列を memcpy した後、`TC_Grayscale` 圧縮・`SRGB = false` でアセットをファイナライズします。
+2.  **均一チャンネル検出（ヘッドレスのみ）**: `bSkipUniformChannels` が有効な場合、`DetectUniformChannels` が要求された各チャンネルをフル解像度で走査し（最初に異なるピクセルが見つかった時点で打ち切り）、単一の値しか持たないチャンネルを除外します。アンパックタブはプレビューで既に検出済みのため、代わりにチェックボックスの状態を渡します。
+3.  **抽出 (並列スレッド)**: `ExtractChannelBytes` が `ParallelFor` でサンプラーを通して読み出し、選択された各チャンネルにつき1バイト/ピクセルの配列を1つ埋めます。この間ミップはロックされたままです。
+4.  **アセット作成 (ゲームスレッド)**: 選択された各チャンネルについて `TSF_G8` の Source を初期化し、チャンネルのバイト列を memcpy した後、`TC_Grayscale` 圧縮・`SRGB = false` でアセットをファイナライズします。
 
 単一チャンネル形式（`G8`/`G16`/`R16F`/`R32F`）は、R/G/B にその唯一の値を、Alpha には不透明の `255` を返します。（パックパスの `ExtractChannelToG8` 側は意図的に「どのチャンネルを要求されても輝度値を返す」ルールを維持しています。パックタブでは、グレースケールマスクを Alpha スロットに割り当てる際にこの挙動に依存しているためです。）
 
@@ -142,16 +162,15 @@ struct FTextureProcessResult
 ## 拡張ポイント
 
 ### 新しい圧縮設定の追加
-`StartupModule` を修正して、`CompressionOptions` に新しい `FCompressionOption` エントリを追加します。
+`TextureChannelPackerCore::GetCompressionOptions()`（`TextureChannelPackerCore.cpp`）に新しい `FCompressionOption` エントリを追加します。
 ```cpp
-FCompressionOption MyOption;
-MyOption.InternalName = "MyNewSetting";
+FCompressionOption& MyOption = Options.AddDefaulted_GetRef();
+MyOption.InternalName = TEXT("MyNewSetting");
 MyOption.CompressionSetting = TC_HDR; // 適用する TextureCompressionSettings 列挙値
-MyOption.DisplayNameEn = "My New Setting";
-MyOption.DisplayNameJa = "新しい設定";
-CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
+MyOption.DisplayNameEn = TEXT("My New Setting");
+MyOption.DisplayNameJa = TEXT("新しい設定");
 ```
-これ以外の変更は不要です。`GetSelectedCompressionSettings` は選択中オプションの `CompressionSetting` メンバーを自動的に返します。
+これ以外の変更は不要です。ドロップダウンはこの一覧から作られ、ヘッドレスの呼び出し側も `InternalName` で指定できます（`"compression": "MyNewSetting"`）。
 
 ### 新しい入力フォーマットのサポート
 `TextureChannelPackerShared.h` の `VisitChannelSampler` に case を追加し、追加の `ETextureSourceFormat` 型 (例: `TSF_BC1`) を処理できるようにします。パック・アンパックの両パスが自動的にこれを利用します。

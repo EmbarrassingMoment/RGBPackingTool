@@ -7,6 +7,19 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [Unreleased]
+
+### 追加 (Added)
+- **ヘッドレス実行**: パックとアンパックをツールウィンドウなしで実行できるようになり、スクリプト・CI・AI エージェントのワークフローに組み込めます。詳しくは [ヘッドレス実行](Docs/Headless.ja.md) を参照してください。
+  - **Commandlet** `-run=TextureChannelPacker`: JSON のジョブファイルを実行し、JSON の結果ファイル（ジョブごとのステータス・安定したエラーコード・出力・警告）を書き出します。終了コードは成功 / 引数の誤り / ジョブ失敗でそれぞれ `0` / `1` / `2`。プリセット、ドライラン、上書きポリシー（`fail` / `overwrite` / `skip`）に対応しています。
+  - **関数ライブラリ** `UTextureChannelPackerLibrary`（`PackTextures`、`UnpackTexture`、プリセット用ヘルパー）。エディタの Python、Editor Utility Blueprint、Remote Control から利用できます。
+  - ヘッドレス実行ではダイアログを一切表示せず、出力は既定でディスクに保存されます。サイズに `0 x 0` を指定すると「最大の入力と同じサイズ」になります。
+- **コアの自動テスト** `TextureChannelPacker.Core.*`: パック / アンパックの出力、上書きポリシー、ドライラン、入力検証、命名を検証します。
+
+### 変更 (Changed)
+- パックとアンパックの処理を、ツールウィンドウ・関数ライブラリ・Commandlet が共有する UI 非依存のコア（`TextureChannelPackerCore`）に移しました。ツールの動作は変わりませんが、不正な出力名・パス（空白を含むなど）は、壊れたアセットを作る代わりにエラーとして拒否されるようになりました。
+- 「ツール」メニューの項目を `UToolMenus::RegisterStartupCallback` 経由で登録するようにし、Commandlet 実行時にエディタのメニューへ触れないようにしました。
+
 ## [1.8.1] - 2026-09-27
 
 ### 変更 (Changed)

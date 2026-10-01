@@ -24,6 +24,25 @@ The module's primary class is `FTextureChannelPackerModule` (inherits `IModuleIn
 *   **Implementation**: `Private/TextureChannelPacker.cpp`
 *   **Shared Utilities**: `Private/TextureChannelPackerShared.h` / `.cpp` (namespace `TextureChannelPackerUtils`)
 *   **Unpack Tab**: `Private/TextureChannelUnpacker.h` / `.cpp` (class `FTextureChannelUnpacker`)
+*   **Core Pipeline**: `Private/TextureChannelPackerCore.h` / `.cpp` (namespace `TextureChannelPackerCore`) — UI-independent Pack / Unpack, naming, compression options, and preset storage
+*   **Request / Result Types**: `Public/TextureChannelPackerTypes.h` (reflected `USTRUCT`s / `UENUM`s)
+*   **Function Library**: `Public/TextureChannelPackerLibrary.h` (class `UTextureChannelPackerLibrary`, for Blueprint / Python / Remote Control)
+*   **Commandlet**: `Private/TextureChannelPackerCommandlet.h` / `.cpp` (class `UTextureChannelPackerCommandlet`, `-run=TextureChannelPacker`)
+
+### Layers
+
+```
+ Slate UI (Pack / Unpack tabs)   UTextureChannelPackerLibrary   UTextureChannelPackerCommandlet
+   dialogs, notifications          (Blueprint / Python /          (JSON jobs -> JSON result)
+            \                         Remote Control)                     /
+             \                              |                            /
+              +------------ TextureChannelPackerCore::Pack / Unpack -----+
+                                 (no dialogs; returns FChannelPackerResult)
+                                             |
+                                 TextureChannelPackerUtils (sampling, resize)
+```
+
+The UI keeps its confirmation dialogs and notifications, then calls the core with `OverwritePolicy = Overwrite` and `bSave = false` (the user saves the package), plus a cancellable progress dialog. Headless callers use the defaults (`Fail`, `bSave = true`, no dialog). See [Headless Usage](Headless.md) for the caller-facing API.
 
 ### Public Interface
 
@@ -52,7 +71,7 @@ This class manages the UI state, holds references to input textures, and execute
 *   **`OnSpawnPluginTab`**: Constructs the main Slate UI.
 *   **`CreateChannelInputSlot`**: Helper method to create consistent UI widgets for each channel input (Label + Object Picker).
 *   **`OnGenerateClicked`**: Validates user inputs (e.g., ensuring at least one texture is selected and resolution is valid) before triggering generation.
-*   **`CreateTexture`**: The main driver for the texture generation process.
+*   **`CreateTexture`**: Builds a `FChannelPackerPackRequest` from the UI state (`BuildPackRequest`), runs `TextureChannelPackerCore::Pack` with a cancellable progress dialog, and reports the result as notifications.
 *   **`AutoGenerateFileName`**: heuristic logic to determine a suitable output filename based on the Longest Common Prefix of inputs.
 
 ### Unpack Class: `FTextureChannelUnpacker`
@@ -63,7 +82,7 @@ Owns all Unpack tab state and UI. Created in `StartupModule` and kept alive unti
 
 *   **`CreateContent`**: Builds the Unpack tab Slate UI (preset dropdown, source picker, 2×2 channel grid, output settings, Unpack button).
 *   **`UpdatePreview`**: Locks Mip 0 and walks it exactly once, box-downsampling all four channels into the small preview buffers while detecting uniform channels in the same pass, then builds four grayscale preview textures. No full-resolution copy or `FColor` buffer is allocated (see *Memory Behavior* below).
-*   **`OnExtractClicked`**: Validates inputs, confirms overwrites (single dialog listing all affected assets), then writes one `TSF_G8` texture asset per selected channel (`TC_Grayscale`, `SRGB = false`) at the source resolution.
+*   **`OnExtractClicked`**: Validates inputs, confirms overwrites (single dialog listing all affected assets), then runs `TextureChannelPackerCore::Unpack`, which writes one `TSF_G8` texture asset per selected channel (`TC_Grayscale`, `SRGB = false`) at the source resolution.
 *   **`AutoGenerateBaseName`**: Strips any known packed suffix (every preset's `FileNameSuffix`) from the source name and enforces the `T_` prefix. Per-channel output names are `<Base><UnpackSuffix>` using the selected preset's suffixes.
 
 The Unpack tab shares the module-owned preset array (`FChannelPackerPreset` gained `UnpackSuffixR/G/B/A` fields; older JSON files load with `_R`/`_G`/`_B`/`_A` defaults). The module calls `OnPresetListChanged` after saving/deleting presets to keep the Unpack dropdown in sync.
@@ -101,7 +120,7 @@ struct FTextureProcessResult
 
 ## Processing Flow
 
-The texture generation pipeline (`CreateTexture`) is designed to be responsive and thread-safe.
+The texture generation pipeline (`TextureChannelPackerCore::Pack`, which `CreateTexture` and the headless entry points call) is designed to be responsive and thread-safe.
 
 1.  **Locking (Game Thread)**
     -   `FLockedTextureSource::Lock` is called for each input (R, G, B, A).
@@ -122,11 +141,12 @@ The texture generation pipeline (`CreateTexture`) is designed to be responsive a
 
 ### Unpack Flow
 
-The unpack path does not go through `ProcessTextureSourceData`. Because the output resolution always equals the source resolution, no resize is required, so channels are read straight out of the mip (locked with `LockMipReadOnly`) through the same sampler the pack path uses:
+The unpack path (`TextureChannelPackerCore::Unpack`) does not go through `ProcessTextureSourceData`. Because the output resolution always equals the source resolution, no resize is required, so channels are read straight out of the mip (locked with `LockMipReadOnly`) through the same sampler the pack path uses:
 
 1.  **Sampler Dispatch**: `VisitChannelSampler` (shared, in `TextureChannelPackerShared.h`) switches on `ETextureSourceFormat` once and hands the caller a `uint8 (int64 PixelIndex, int32 ChannelIndex)` sampler that converts to 8-bit inline. Dispatching outside the pixel loop keeps the inner loop branch-free, and 64-bit pixel indices mean sources larger than 2 GB (e.g. 16K `RGBA32F`) are handled without an intermediate buffer.
-2.  **Extraction (Parallel Threads)**: `ExtractChannelBytes` fills one byte-per-pixel array per selected channel via `ParallelFor`, reading through the sampler. The mip stays locked for the duration.
-3.  **Asset Creation (Game Thread)**: For each selected channel, a `TSF_G8` source is initialized, the channel bytes are memcpy'd in, and the asset is finalized with `TC_Grayscale` compression and `SRGB = false`.
+2.  **Uniform Detection (headless only)**: With `bSkipUniformChannels`, `DetectUniformChannels` scans each requested channel at full resolution (stopping at the first differing pixel) and leaves out channels that hold a single value. The Unpack tab passes its checkbox state instead, since its preview already detected them.
+3.  **Extraction (Parallel Threads)**: `ExtractChannelBytes` fills one byte-per-pixel array per selected channel via `ParallelFor`, reading through the sampler. The mip stays locked for the duration.
+4.  **Asset Creation (Game Thread)**: For each selected channel, a `TSF_G8` source is initialized, the channel bytes are memcpy'd in, and the asset is finalized with `TC_Grayscale` compression and `SRGB = false`.
 
 Single-channel source formats (`G8`/`G16`/`R16F`/`R32F`) report their lone value on R/G/B and an opaque `255` on Alpha. (The pack path's `ExtractChannelToG8` deliberately keeps its own rule of returning the luminance for *any* requested channel — the Pack tab relies on that when a grayscale mask is assigned to the Alpha slot.)
 
@@ -142,16 +162,15 @@ Note that the *outputs* still consume VRAM once created: `TC_Grayscale` yields u
 ## Extension Points
 
 ### Adding New Compression Settings
-Modify `StartupModule` to add a new `FCompressionOption` entry to `CompressionOptions`.
+Add a new `FCompressionOption` entry in `TextureChannelPackerCore::GetCompressionOptions()` (`TextureChannelPackerCore.cpp`).
 ```cpp
-FCompressionOption MyOption;
-MyOption.InternalName = "MyNewSetting";
+FCompressionOption& MyOption = Options.AddDefaulted_GetRef();
+MyOption.InternalName = TEXT("MyNewSetting");
 MyOption.CompressionSetting = TC_HDR; // The TextureCompressionSettings enum to apply
-MyOption.DisplayNameEn = "My New Setting";
-MyOption.DisplayNameJa = "新しい設定";
-CompressionOptions.Add(MakeShared<FCompressionOption>(MyOption));
+MyOption.DisplayNameEn = TEXT("My New Setting");
+MyOption.DisplayNameJa = TEXT("新しい設定");
 ```
-No further changes are needed: `GetSelectedCompressionSettings` returns the selected option's `CompressionSetting` member automatically.
+No further changes are needed: the dropdown is built from this list, and headless callers can select the option by its `InternalName` (`"compression": "MyNewSetting"`).
 
 ### Supporting New Input Formats
 Add a case to `VisitChannelSampler` in `TextureChannelPackerShared.h` to handle additional `ETextureSourceFormat` types (e.g., `TSF_BC1`). Both the pack and unpack paths pick it up automatically.

@@ -40,6 +40,7 @@
   - **Preset-Driven Suffixes**: Presets carry per-channel unpack suffixes; older preset files load with `_R`/`_G`/`_B`/`_A` defaults.
   - **Memory-Efficient**: The preview and the extraction read straight from the source without full-resolution intermediate buffers, so previewing a 16K texture costs a few hundred KB rather than gigabytes.
   - Extracted assets are single-channel (G8) textures with `Grayscale` compression and `sRGB = false`, created at the source resolution.
+- **Headless Execution**: Pack and Unpack can run without the tool window — from a commandlet (JSON job file in, JSON result out), Editor Python, Editor Utility Blueprints, or Remote Control — so they fit into scripts, CI, and AI-agent workflows. No dialogs are shown; results carry stable error codes. See [Headless Usage](Docs/Headless.md).
 - **User Interface**:
   - **UI Localization**: The interface automatically switches between English and Japanese based on the Editor's language preference.
   - **Cancellable Progress**: A progress dialog with a cancel button appears during generation, allowing you to abort long operations.
@@ -163,6 +164,16 @@ The **Unpack** tab reverses the packing process: it extracts the R/G/B/A channel
 
 5. **Unpack**:
    Click **Unpack Textures**. One grayscale (G8, `Grayscale` compression, `sRGB = false`) asset is created per selected channel at the source resolution. Existing assets are listed in a single overwrite-confirmation dialog before anything is written.
+
+## Headless / Automation
+
+Pack and Unpack can also run without the tool window, for scripts, CI, and AI agents. For example, a batch of jobs can be run from the command line:
+
+```
+UnrealEditor-Cmd.exe MyProject.uproject -run=TextureChannelPacker -Job=jobs.json -Result=result.json -unattended -nullrhi
+```
+
+The same operations are available to Editor Python (`unreal.TextureChannelPackerLibrary.pack_textures(...)`) and Editor Utility Blueprints. Headless runs never open dialogs: overwriting is controlled by an explicit policy (`fail` / `overwrite` / `skip`), outputs are saved to disk by default, and every result reports a status and a stable error code. See **[Headless Usage](Docs/Headless.md)** for the job file format, the Python API, and the error codes.
 
 ## Compression Settings Explained
 
