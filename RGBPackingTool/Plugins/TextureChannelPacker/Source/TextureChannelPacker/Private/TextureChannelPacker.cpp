@@ -24,7 +24,6 @@
 #endif
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Paths.h"
-#include "Misc/PackageName.h"
 #include "Misc/MessageDialog.h"
 #include "Math/UnrealMathUtility.h"
 #include "Widgets/Input/SComboButton.h"
@@ -1113,12 +1112,8 @@ FReply FTextureChannelPackerModule::OnGenerateClicked()
         }
     }
 
-    FString PackageName = OutputPackagePath;
-    if (!PackageName.EndsWith(TEXT("/")))
-    {
-        PackageName += TEXT("/");
-    }
-    PackageName += OutputFileName;
+    // Same naming rule as the core, so the overwrite check below covers the asset that is written.
+    const FString PackageName = TextureChannelPackerCore::MakePackageName(OutputPackagePath, OutputFileName);
 
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
     FString ObjectPath = PackageName + TEXT(".") + OutputFileName;
@@ -1176,9 +1171,14 @@ void FTextureChannelPackerModule::CreateTexture(const FString& PackageName, int3
 {
     check(IsInGameThread());
 
+    // Split after the last '/' and keep the slash on the path, so MakePackageName rebuilds exactly
+    // PackageName (the name OnGenerateClicked checked for an existing asset).
+    int32 LastSlashIndex = INDEX_NONE;
+    PackageName.FindLastChar(TEXT('/'), LastSlashIndex);
+
     FChannelPackerPackRequest Request = BuildPackRequest();
-    Request.OutputPath = FPackageName::GetLongPackagePath(PackageName);
-    Request.OutputName = FPackageName::GetShortName(PackageName);
+    Request.OutputPath = PackageName.Left(LastSlashIndex + 1);
+    Request.OutputName = PackageName.Mid(LastSlashIndex + 1);
     Request.Width = Width;
     Request.Height = Height;
 

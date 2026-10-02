@@ -136,6 +136,7 @@ bool FTextureChannelPackerCorePackTest::RunTest(const FString& Parameters)
     Again.OverwritePolicy = EChannelPackerOverwritePolicy::Fail;
     const FChannelPackerResult FailResult = Pack(Again);
     TestEqual(TEXT("Fail policy reports an existing asset"), FailResult.ErrorCode, FString(TEXT("ErrorAssetExists")));
+    TestEqual(TEXT("A failed request reports no outputs"), FailResult.OutputAssets.Num(), 0);
 
     Again.OverwritePolicy = EChannelPackerOverwritePolicy::Skip;
     TestEqual(TEXT("Skip policy skips an existing asset"), StatusToString(Pack(Again).Status), FString(TEXT("Skipped")));
@@ -285,6 +286,12 @@ bool FTextureChannelPackerCoreValidationTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Output name must be a valid object name"), Pack(Request).ErrorCode, FString(TEXT("ErrorInvalidOutputName")));
     }
     {
+        // Names are not trimmed: the editor tool's overwrite check uses the name as typed.
+        FChannelPackerPackRequest Request = MakeValidPack();
+        Request.OutputName = TEXT("T_CoreTest_NeverCreated ");
+        TestEqual(TEXT("Output name is not trimmed"), Pack(Request).ErrorCode, FString(TEXT("ErrorInvalidOutputName")));
+    }
+    {
         FChannelPackerUnpackRequest Request;
         Request.Source = Input.Get();
         Request.bExportRed = Request.bExportGreen = Request.bExportBlue = Request.bExportAlpha = false;
@@ -300,6 +307,8 @@ bool FTextureChannelPackerCoreValidationTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Packed name enforces T_"), MakePackedAssetName({ TEXT("Rock_AO") }, TEXT("_MRA")), FString(TEXT("T_Rock_AO_MRA")));
     TestEqual(TEXT("Unpack base strips a known suffix"), MakeUnpackBaseName(TEXT("T_Rock_ORM"), { TEXT("_ORM"), TEXT("_MRA") }), FString(TEXT("T_Rock")));
     TestEqual(TEXT("Unpack base suffix match ignores case"), MakeUnpackBaseName(TEXT("Rock_packed"), { TEXT("_Packed") }), FString(TEXT("T_Rock")));
+    TestEqual(TEXT("Package name adds one slash"), MakePackageName(TEXT("/Game/Rock"), TEXT("T_X")), FString(TEXT("/Game/Rock/T_X")));
+    TestEqual(TEXT("Package name keeps an existing slash"), MakePackageName(TEXT("/Game/Rock/"), TEXT("T_X")), FString(TEXT("/Game/Rock/T_X")));
 
     return true;
 }

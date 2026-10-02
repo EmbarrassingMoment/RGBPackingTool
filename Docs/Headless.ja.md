@@ -125,7 +125,7 @@ UnrealEditor-Cmd.exe <Project>.uproject -run=TextureChannelPacker -Job=jobs.json
 
 - `status`: `Succeeded`、`Skipped`、`DryRun`、`Failed` のいずれか。
 - `errorCode`: 言語に依存しない安定した識別子です。分岐にはこちらを使ってください（`message` はエディタの言語設定に従います）。
-- `outputs`: 書き込んだアセットのオブジェクトパス。`DryRun` / `Skipped` の場合は、ジョブの対象となるパス。
+- `outputs`: 書き込んだ（`save` が有効なら保存まで完了した）アセットのオブジェクトパス。`DryRun` / `Skipped` の場合は、ジョブの対象となるパス。ジョブが失敗した場合は空です（アンパックで、失敗前に書き込み済みのチャンネルがある場合はそれだけを含みます）。
 - `warnings`: 致命的でない問題。各要素は `{ "code", "channel", "message" }`。パックの場合、入力を読み込めなかったためスロットをデフォルト値で埋めたことを意味します。
 - 実行を開始できなかった場合（引数の誤り、ジョブファイルを読めないなど）は、`"error": { "code", "message" }` と空の `results` 配列が出力されます。
 

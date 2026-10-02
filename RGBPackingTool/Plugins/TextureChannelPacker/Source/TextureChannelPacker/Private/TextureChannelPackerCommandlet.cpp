@@ -11,6 +11,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace
 {
@@ -35,7 +36,8 @@ namespace
      */
     FString NormalizeAssetPath(const FString& InPath)
     {
-        FString Path = FPackageName::ExportTextPathToObjectPath(InPath.TrimStartAndEnd());
+        const FString TrimmedPath = InPath.TrimStartAndEnd();
+        FString Path = FPackageName::ExportTextPathToObjectPath(TrimmedPath);
         if (!Path.IsEmpty() && !Path.Contains(TEXT(".")))
         {
             Path += TEXT(".") + FPackageName::GetShortName(Path);
@@ -510,14 +512,15 @@ UTextureChannelPackerCommandlet::UTextureChannelPackerCommandlet()
 
 int32 UTextureChannelPackerCommandlet::Main(const FString& Params)
 {
+    // bShouldStopOnSeparator = false: paths may contain ',' or ')' (quote paths that contain spaces).
     FString ResultPath;
-    if (FParse::Value(*Params, TEXT("Result="), ResultPath) && !ResultPath.IsEmpty())
+    if (FParse::Value(*Params, TEXT("Result="), ResultPath, false) && !ResultPath.IsEmpty())
     {
         ResultPath = ResolveCommandLinePath(ResultPath);
     }
 
     FString JobPath;
-    if (!FParse::Value(*Params, TEXT("Job="), JobPath) || JobPath.IsEmpty())
+    if (!FParse::Value(*Params, TEXT("Job="), JobPath, false) || JobPath.IsEmpty())
     {
         return FailRun(ResultPath, TEXT("ErrorUsage"), FString::Printf(TEXT("Usage: %s"), *HelpUsage));
     }
@@ -593,6 +596,11 @@ int32 UTextureChannelPackerCommandlet::Main(const FString& Params)
             Index, *ModeLabel, *TextureChannelPackerCore::StatusToString(Result.Status), *ErrorLabel, *Result.Message);
 
         Results.Add(MakeShared<FJsonValueObject>(ResultToJson(Index, Mode, Result)));
+
+        // Saved outputs are unpinned by the core and loaded inputs are not referenced any more, so
+        // collect them between jobs to keep memory flat over long job files. Unsaved outputs stay
+        // rooted and therefore remain available to later jobs.
+        CollectGarbage(RF_NoFlags);
     }
 
     // Let texture builds kicked off by unsaved (or already saved) outputs finish before the editor exits.

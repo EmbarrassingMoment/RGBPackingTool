@@ -125,7 +125,7 @@ Unknown fields are rejected (`ErrorInvalidJob`), so a typo fails loudly instead 
 
 - `status`: `Succeeded`, `Skipped`, `DryRun`, or `Failed`.
 - `errorCode`: stable and locale-independent; branch on this, not on `message` (which follows the editor language).
-- `outputs`: object paths written, or, for `DryRun` / `Skipped`, the paths the job targets.
+- `outputs`: object paths of the assets written (and saved, when `save` is on), or, for `DryRun` / `Skipped`, the paths the job targets. Empty when a job fails, except for the channels an unpack job had already written.
 - `warnings`: non-fatal problems, each `{ "code", "channel", "message" }`. For pack, a warning means an input could not be read and its slot was filled with the default value.
 - If the run cannot start (bad arguments, unreadable job file), the result contains `"error": { "code", "message" }` and an empty `results` array.
 

@@ -47,17 +47,6 @@ namespace
         UE_LOG(LogTexturePacker, Warning, TEXT("[%s] (%s) %s"), *Code, *Channel, *Warning.Message);
     }
 
-    /** Joins a content folder and an asset name into a long package name ("/Game/Folder" + "T_X" -> "/Game/Folder/T_X"). */
-    FString JoinPackageName(const FString& OutputPath, const FString& AssetName)
-    {
-        FString PackagePath = OutputPath.TrimStartAndEnd();
-        while (PackagePath.EndsWith(TEXT("/")))
-        {
-            PackagePath.LeftChopInline(1);
-        }
-        return PackagePath + TEXT("/") + AssetName;
-    }
-
     bool ContainsAnyChar(const FString& Text, const TCHAR* Chars)
     {
         int32 Unused = INDEX_NONE;
@@ -346,12 +335,15 @@ FChannelPackerResult Pack(const FChannelPackerPackRequest& Request, const FExecu
     Result.Width = Width;
     Result.Height = Height;
 
-    FString AssetName = Request.OutputName.TrimStartAndEnd();
+    // Names are used exactly as given (no trimming): the editor tool checks for an existing asset
+    // under the same name before it asks the core to overwrite, so both must agree.
+    FString AssetName = Request.OutputName;
     if (AssetName.IsEmpty())
     {
         AssetName = MakePackedAssetName(InputNames, Request.FileNameSuffix);
     }
-    const FString PackageName = JoinPackageName(Request.OutputPath, AssetName);
+    const FString PackageName = MakePackageName(Request.OutputPath, AssetName);
+    const FString ObjectPath = PackageName + TEXT(".") + AssetName;
     if (!ValidateOutputName(PackageName, AssetName, Result))
     {
         return Result;
@@ -367,13 +359,12 @@ FChannelPackerResult Pack(const FChannelPackerPackRequest& Request, const FExecu
             FText::FromString(Request.Compression)));
     }
 
-    Result.OutputAssets.Add(PackageName + TEXT(".") + AssetName);
-
     if (Request.OverwritePolicy != EChannelPackerOverwritePolicy::Overwrite && DoesAssetExist(PackageName, AssetName))
     {
         if (Request.OverwritePolicy == EChannelPackerOverwritePolicy::Skip)
         {
             Result.Status = EChannelPackerStatus::Skipped;
+            Result.OutputAssets.Add(ObjectPath);
             Result.Message = FText::Format(
                 GetLocalizedMessage(TEXT("SkippedAssetExists"),
                     TEXT("{0} already exists; skipped."),
@@ -391,6 +382,7 @@ FChannelPackerResult Pack(const FChannelPackerPackRequest& Request, const FExecu
     if (Request.bDryRun)
     {
         Result.Status = EChannelPackerStatus::DryRun;
+        Result.OutputAssets.Add(ObjectPath);
         Result.Message = FText::Format(
             GetLocalizedMessage(TEXT("DryRunPack"),
                 TEXT("Dry run: would create {0} ({1} x {2})."),
@@ -422,7 +414,6 @@ FChannelPackerResult Pack(const FChannelPackerPackRequest& Request, const FExecu
             TEXT("Texture generation was cancelled by user."),
             TEXT("テクスチャ生成がユーザーによってキャンセルされました。")
         ).ToString();
-        Result.OutputAssets.Reset();
         return Result;
     };
 
@@ -600,12 +591,19 @@ FChannelPackerResult Pack(const FChannelPackerPackRequest& Request, const FExecu
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(NewTexture);
 
-    if (Request.bSave && !SaveAsset(Package, NewTexture))
+    if (Request.bSave)
     {
-        return SetFailed(Result, TEXT("ErrorSaveFailed"), MakeSaveFailedMessage(PackageName));
+        if (!SaveAsset(Package, NewTexture))
+        {
+            return SetFailed(Result, TEXT("ErrorSaveFailed"), MakeSaveFailedMessage(PackageName));
+        }
+
+        // Saved, so the asset no longer needs pinning: long batch runs can garbage-collect it.
+        NewTexture->RemoveFromRoot();
     }
 
     Result.Status = EChannelPackerStatus::Succeeded;
+    Result.OutputAssets.Add(ObjectPath);
     Result.Message = FText::Format(
         Request.bSave
             ? GetLocalizedMessage(TEXT("SuccessTextureSavedToDisk"), TEXT("Texture saved: {0}"), TEXT("テクスチャを保存しました: {0}"))
@@ -685,7 +683,8 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
     static const TCHAR* const DefaultSuffixes[4] = { TEXT("_R"), TEXT("_G"), TEXT("_B"), TEXT("_A") };
     const FString* RequestedSuffixes[4] = { &Request.SuffixRed, &Request.SuffixGreen, &Request.SuffixBlue, &Request.SuffixAlpha };
 
-    FString BaseName = Request.BaseName.TrimStartAndEnd();
+    // Used exactly as given (no trimming), for the same reason as the pack output name.
+    FString BaseName = Request.BaseName;
     if (BaseName.IsEmpty())
     {
         BaseName = MakeUnpackBaseName(SourceTex->GetName(), GetKnownPackedSuffixes());
@@ -697,7 +696,7 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
     for (int32 Index = 0; Index < 4; ++Index)
     {
         AssetNames[Index] = BaseName + (RequestedSuffixes[Index]->IsEmpty() ? FString(DefaultSuffixes[Index]) : *RequestedSuffixes[Index]);
-        PackageNames[Index] = JoinPackageName(Request.OutputPath, AssetNames[Index]);
+        PackageNames[Index] = MakePackageName(Request.OutputPath, AssetNames[Index]);
         if (!bRequested[Index])
         {
             continue;
@@ -754,6 +753,7 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
     const ETextureSourceFormat SourceFormat = SourceTex->Source.GetFormat();
 
     TArray<int32> SelectedChannels;
+    TArray<FString> PlannedOutputs;
     TArray<TArray<uint8>> ChannelData;
     {
         // Read-only lock: unlocking does not re-hash the payload or touch the source GUID.
@@ -802,7 +802,7 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
                 continue;
             }
             SelectedChannels.Add(Index);
-            Result.OutputAssets.Add(PackageNames[Index] + TEXT(".") + AssetNames[Index]);
+            PlannedOutputs.Add(PackageNames[Index] + TEXT(".") + AssetNames[Index]);
         }
 
         if (SelectedChannels.Num() == 0)
@@ -829,6 +829,7 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
                 if (Request.OverwritePolicy == EChannelPackerOverwritePolicy::Skip)
                 {
                     Result.Status = EChannelPackerStatus::Skipped;
+                    Result.OutputAssets = PlannedOutputs;
                     Result.Message = FText::Format(
                         GetLocalizedMessage(TEXT("SkippedAssetExists"),
                             TEXT("{0} already exists; skipped."),
@@ -847,6 +848,7 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
         if (Request.bDryRun)
         {
             Result.Status = EChannelPackerStatus::DryRun;
+            Result.OutputAssets = PlannedOutputs;
             Result.Message = FText::Format(
                 GetLocalizedMessage(TEXT("DryRunUnpack"),
                     TEXT("Dry run: would create {0} texture(s) in {1}."),
@@ -857,7 +859,6 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
 
         if (SlowTask.ShouldCancel())
         {
-            Result.OutputAssets.Reset();
             Result.Status = EChannelPackerStatus::Cancelled;
             Result.ErrorCode = TEXT("UnpackCancelled");
             Result.Message = CancelMsg.ToString();
@@ -880,9 +881,9 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
     }
 
     // ---------------------------------------------------------
-    // Write one grayscale asset per channel (Game Thread)
+    // Write one grayscale asset per channel (Game Thread). OutputAssets lists only the assets
+    // actually written (and saved, if requested), so a failure reports what is on disk.
     // ---------------------------------------------------------
-    Result.OutputAssets.Reset();
     bool bCancelled = false;
     TArray<FString> SaveFailures;
 
@@ -940,13 +941,20 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
 
         Package->MarkPackageDirty();
         FAssetRegistryModule::AssetCreated(NewTexture);
-        Result.OutputAssets.Add(PackageName + TEXT(".") + AssetName);
 
-        if (Request.bSave && !SaveAsset(Package, NewTexture))
+        if (Request.bSave)
         {
-            SaveFailures.Add(PackageName);
-            AddWarning(Result, TEXT("ErrorSaveFailed"), GChannelLetters[ChannelIndex], MakeSaveFailedMessage(PackageName));
+            if (!SaveAsset(Package, NewTexture))
+            {
+                SaveFailures.Add(PackageName);
+                AddWarning(Result, TEXT("ErrorSaveFailed"), GChannelLetters[ChannelIndex], MakeSaveFailedMessage(PackageName));
+                continue;
+            }
+
+            // Saved, so the asset no longer needs pinning: long batch runs can garbage-collect it.
+            NewTexture->RemoveFromRoot();
         }
+        Result.OutputAssets.Add(PackageName + TEXT(".") + AssetName);
     }
 
     if (bCancelled)
@@ -987,6 +995,11 @@ FChannelPackerResult Unpack(const FChannelPackerUnpackRequest& Request, const FE
 }
 
 // ========== Naming ==========
+
+FString MakePackageName(const FString& OutputPath, const FString& AssetName)
+{
+    return OutputPath.EndsWith(TEXT("/")) ? OutputPath + AssetName : OutputPath + TEXT("/") + AssetName;
+}
 
 FString MakePackedAssetName(const TArray<FString>& InputNames, const FString& Suffix)
 {
@@ -1205,7 +1218,7 @@ TArray<FChannelPackerPreset> LoadUserPresets()
                 if (!Preset.PresetName.IsEmpty())
                 {
                     Result.Add(Preset);
-                    UE_LOG(LogTexturePacker, Log, TEXT("Loaded user preset: %s"), *Preset.PresetName);
+                    UE_LOG(LogTexturePacker, Verbose, TEXT("Loaded user preset: %s"), *Preset.PresetName);
                 }
             }
             else

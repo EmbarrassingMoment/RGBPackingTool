@@ -45,6 +45,15 @@ namespace TextureChannelPackerCore
     // ========== Naming ==========
 
     /**
+     * @brief Joins a content folder and an asset name into a long package name.
+     *
+     * "/Game/Folder" or "/Game/Folder/" + "T_X" -> "/Game/Folder/T_X". Nothing is trimmed or
+     * collapsed, so the result is validated exactly as typed. The editor tool uses this for its
+     * overwrite check, so the asset it checks is always the asset the core writes.
+     */
+    FString MakePackageName(const FString& OutputPath, const FString& AssetName);
+
+    /**
      * @brief The tool's auto naming for packed outputs.
      *
      * Uses the longest common prefix of the input names (if at least 3 characters, otherwise the

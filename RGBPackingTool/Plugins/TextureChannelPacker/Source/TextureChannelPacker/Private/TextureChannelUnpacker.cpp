@@ -220,12 +220,8 @@ FString FTextureChannelUnpacker::GetChannelAssetName(int32 ChannelIndex) const
 
 FString FTextureChannelUnpacker::GetChannelPackageName(int32 ChannelIndex) const
 {
-    FString PackageName = OutputPackagePath;
-    if (!PackageName.EndsWith(TEXT("/")))
-    {
-        PackageName += TEXT("/");
-    }
-    return PackageName + GetChannelAssetName(ChannelIndex);
+    // Same naming rule as the core, so the overwrite confirmation covers the assets that are written.
+    return TextureChannelPackerCore::MakePackageName(OutputPackagePath, GetChannelAssetName(ChannelIndex));
 }
 
 FText FTextureChannelUnpacker::GetChannelHeaderText(int32 ChannelIndex) const

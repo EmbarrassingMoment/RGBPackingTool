@@ -231,8 +231,9 @@ struct TEXTURECHANNELPACKER_API FChannelPackerResult
     FString Message;
 
     /**
-     * Object paths of the output assets (e.g. "/Game/T_Rock_ORM.T_Rock_ORM"): the assets written,
-     * or, for DryRun and Skipped, the assets the request targets.
+     * Object paths of the output assets (e.g. "/Game/T_Rock_ORM.T_Rock_ORM"): the assets written
+     * (and saved, if requested), or, for DryRun and Skipped, the assets the request targets. Empty
+     * on failure, except for the channels an unpack request had already written.
      */
     UPROPERTY(BlueprintReadOnly, Category = "Texture Channel Packer")
     TArray<FString> OutputAssets;
