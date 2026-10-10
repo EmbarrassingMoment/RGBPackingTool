@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Headless execution**: Pack and Unpack can run without the tool window, for scripts, CI, and AI-agent workflows. See [Headless Usage](Docs/Headless.md).
+  - **Commandlet** `-run=TextureChannelPacker`: runs a JSON job file and writes a JSON result file (status, stable error code, outputs, warnings per job). Exit code `0` / `1` / `2` for success / bad arguments / failed jobs. Supports presets, a dry-run mode, and an overwrite policy (`fail` / `overwrite` / `skip`).
+  - **Function library** `UTextureChannelPackerLibrary` (`PackTextures`, `UnpackTexture`, preset helpers) for Editor Python, Editor Utility Blueprints, and Remote Control.
+  - Headless runs never open dialogs, save outputs to disk by default, and accept `0 x 0` as "the size of the largest input".
+- **Core automation tests** `TextureChannelPacker.Core.*` for pack/unpack output, overwrite policies, dry runs, validation, and naming.
+
+### Changed
+- The Pack and Unpack processing moved into a UI-independent core (`TextureChannelPackerCore`) that the tool window, the function library, and the commandlet share. The tool's behavior is unchanged, except that invalid output names/paths (e.g. containing spaces) are now rejected with an error instead of producing a broken asset.
+- The Tools menu entry is registered through `UToolMenus::RegisterStartupCallback`, so commandlets do not touch the editor menus.
+
 ## [1.8.1] - 2026-09-27
 
 ### Changed

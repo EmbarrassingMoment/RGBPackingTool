@@ -6,6 +6,7 @@
 #include "Engine/Texture.h"
 #include "Dom/JsonObject.h"
 #include "UObject/StrongObjectPtr.h"
+#include "TextureChannelPackerTypes.h"
 
 class SDockTab;
 class FSpawnTabArgs;
@@ -15,20 +16,14 @@ template <typename OptionType> class SComboBox;
 class FTextureChannelUnpacker;
 
 /**
- * @enum ESourceChannel
  * @brief Identifies which channel of an input texture to read from.
  *
  * Used to let users pick R/G/B/A from each input texture instead of always reading Red.
  * For single-channel source formats (G8, G16, R16F, R32F), the selection is ignored
- * and the only available value is used.
+ * and the only available value is used. An alias of the reflected EChannelPackerChannel,
+ * so the request structs and the UI share one enum.
  */
-enum class ESourceChannel : uint8
-{
-    Red = 0,
-    Green = 1,
-    Blue = 2,
-    Alpha = 3
-};
+using ESourceChannel = EChannelPackerChannel;
 
 /**
  * @enum EPreviewMode
@@ -200,14 +195,21 @@ private:
     /**
      * @brief Creates the packed texture asset.
      *
-     * Executes the packing workflow: extracting source data, processing it in parallel,
-     * and writing the final pixels to a new UTexture2D asset.
+     * Builds a pack request from the current UI state and runs it through
+     * TextureChannelPackerCore::Pack with a progress dialog, leaving the package dirty for
+     * the user to save, then reports the result as notifications.
      *
      * @param PackageName The full package path and name for the new asset.
      * @param Width The target width for the output texture.
      * @param Height The target height for the output texture.
      */
     void CreateTexture(const FString& PackageName, int32 Width, int32 Height);
+
+    /** Builds a pack request (inputs, source channels, invert flags, compression) from the current UI state. */
+    FChannelPackerPackRequest BuildPackRequest() const;
+
+    /** Registers the Tools menu entry. Deferred via UToolMenus::RegisterStartupCallback. */
+    void RegisterMenus();
 
     /**
      * @brief Displays a notification toast in the editor.
@@ -216,13 +218,6 @@ private:
      * @param bSuccess If true, shows a success icon; otherwise, shows an error icon.
      */
     void ShowNotification(const FText& Message, bool bSuccess);
-
-    /**
-     * @brief Converts the currently selected compression option string to the corresponding Unreal Engine enum.
-     *
-     * @return The TextureCompressionSettings enum value (e.g., TC_Masks, TC_Grayscale, TC_Default).
-     */
-    TextureCompressionSettings GetSelectedCompressionSettings() const;
 
     /**
      * @brief Creates a UI widget for a single texture input channel.
