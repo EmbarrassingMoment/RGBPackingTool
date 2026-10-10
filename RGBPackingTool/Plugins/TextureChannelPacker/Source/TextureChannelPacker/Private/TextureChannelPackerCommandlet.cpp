@@ -363,7 +363,7 @@ namespace
 
                 for (const TSharedPtr<FJsonValue>& Entry : Channels->AsArray())
                 {
-                    EChannelPackerChannel Channel;
+                    EChannelPackerChannel Channel = EChannelPackerChannel::Red;
                     if (!Entry.IsValid() || Entry->Type != EJson::String || !ParseChannel(Entry->AsString(), Channel))
                     {
                         OutError = FString::Printf(TEXT("%s: \"channels\" entries must be R, G, B or A"), *Context);
@@ -505,6 +505,9 @@ UTextureChannelPackerCommandlet::UTextureChannelPackerCommandlet()
     IsServer = false;
     IsEditor = true;
     LogToConsole = true;
+    // Keep the documented exit codes: otherwise the engine turns 0 into 1 whenever anything
+    // (e.g. an unrelated asset or config) logged an error during the run.
+    UseCommandletResultAsExitCode = true;
 
     HelpDescription = TEXT("Runs Texture Channel Packer pack/unpack jobs from a JSON file and writes a JSON result file.");
     HelpUsage = TEXT("<Project>.uproject -run=TextureChannelPacker -Job=<jobs.json> [-Result=<result.json>] [-DryRun]");
