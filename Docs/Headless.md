@@ -126,7 +126,7 @@ Unknown fields are rejected (`ErrorInvalidJob`), so a typo fails loudly instead 
 - `status`: `Succeeded`, `Skipped`, `DryRun`, or `Failed`.
 - `errorCode`: stable and locale-independent; branch on this, not on `message` (which follows the editor language).
 - `outputs`: object paths of the assets written (and saved, when `save` is on), or, for `DryRun` / `Skipped`, the paths the job targets. Empty when a job fails, except for the channels an unpack job had already written.
-- `warnings`: non-fatal problems, each `{ "code", "channel", "message" }`. For pack, a warning means an input could not be read and its slot was filled with the default value.
+- `warnings`: non-fatal problems, each `{ "code", "channel", "message" }`. For pack, a warning means an input could not be read and its slot was filled with the default value. For unpack, a warning names a channel whose asset could not be created or saved; the remaining channels are still processed.
 - If the run cannot start (bad arguments, unreadable job file), the result contains `"error": { "code", "message" }` and an empty `results` array.
 
 ## Python
@@ -161,7 +161,9 @@ else:
 | `make_pack_request_from_preset(name)` / `make_unpack_request_from_preset(name)` | Fills a request with a preset's defaults; reports `False` if no preset has that name. |
 | `get_preset_names()` | Built-in and user preset names. |
 
-The request fields mirror the job file (`width`, `height`, `output_path`, `output_name`, `file_name_suffix`, `compression`, `overwrite_policy`, `save`, `dry_run`, and for unpack `source`, `export_red`… `export_alpha`, `skip_uniform_channels`, `base_name`, `suffix_red`… `suffix_alpha`). Unlike the editor tool, `save` defaults to `True`.
+A pack request has one `ChannelPackerInput` per slot (`red`, `green`, `blue`, `alpha`), each with `texture`, `source_channel` (an `unreal.ChannelPackerChannel`; the job file's `channel`) and `invert`. The other request fields mirror the job file (`width`, `height`, `output_path`, `output_name`, `file_name_suffix`, `compression`, `overwrite_policy`, `save`, `dry_run`, and for unpack `source`, `export_red`… `export_alpha`, `skip_uniform_channels`, `base_name`, `suffix_red`… `suffix_alpha`). Unlike the editor tool, `save` defaults to `True`.
+
+A `ChannelPackerResult` holds what a result file entry holds, under Python names: `status`, `error_code`, `message`, `output_assets`, `warnings` (each a `ChannelPackerWarning` with `code`, `channel`, `message`), `width`, `height`, and `skipped_uniform_channels`.
 
 ## Behavior Notes
 
@@ -180,10 +182,13 @@ The request fields mirror the job file (`width`, `height`, `output_path`, `outpu
 | `ErrorInvalidCompression` | Unknown compression name. |
 | `ErrorAssetExists` | An output exists and the overwrite policy is `Fail`. |
 | `ErrorAssetTypeMismatch` | An object of another class already uses the output name. |
+| `ErrorPackageCreation` | The output package could not be created. |
 | `ErrorSaveFailed` | The package could not be saved. |
 | `ErrorNoUnpackSource`, `ErrorNoChannelsSelected` | Unpack: no source, or no channel requested. |
 | `ErrorNoChannelsToExport` | Unpack: every requested channel is uniform (use `"channels": "all"` to export anyway). |
 | `ErrorDuplicateOutputNames` | Unpack: two channels resolve to the same name (check the suffixes). |
+| `ErrorUnpackNothingSaved` | Unpack: no channel could be written; `warnings` gives the reason for each channel. |
 | `ErrorUnsupportedFormat`, `ErrorLockFailed`, `ErrorTextureTooLarge`, `ErrorInvalidSourceData`, `ErrorInvalidUnpackSource` | The texture's source data cannot be read. For pack inputs these are warnings (the slot gets its default value). |
+| `ErrorNoEditorData` | The plugin was built without editor-only data; headless runs need an editor build. |
 | `ErrorInvalidJob` | Commandlet: the job entry does not match the schema (the message says which field). |
 | `ErrorUsage`, `ErrorJobFileNotFound`, `ErrorInvalidJobFile` | Commandlet: the run could not start. |
