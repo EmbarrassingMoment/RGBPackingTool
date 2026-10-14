@@ -63,7 +63,7 @@
     * `README.md` (英語) への修正や追記を依頼された場合、**指示がなくても自動的に** `README.ja.md` (日本語) にも同等の内容を翻訳して反映させてください。
     * 逆に `README.ja.md` への変更を依頼された場合も、同様に `README.md` へ反映させてください。
     * 常に日英両方のドキュメントが最新かつ同期された状態を保つことを優先します。
-    * ヘッドレス API（Commandlet、`UTextureChannelPackerLibrary`、`TextureChannelPackerTypes.h`）やエラーコードを変更した場合は、`Docs/Headless.md` と `Docs/Headless.ja.md` を更新し、`python3 Tools/check_headless_docs.py` が成功することを確認してください（CI でも実行されます）。
+    * ヘッドレス API（Commandlet、`UTextureChannelPackerLibrary`、`TextureChannelPackerTypes.h`）やエラーコードを変更した場合は、`Docs/Headless.md` と `Docs/Headless.ja.md` を更新し、`python3 Tools/check_headless_docs.py` と `python3 Tools/ai_eval/run_eval.py selftest` が成功することを確認してください（CI でも実行されます）。ジョブファイルの解釈や命名を変えた場合は `Tools/ai_eval/jobsim.py` も合わせて更新します。
 
 8.  **コミットメッセージの規約:**
     * 変更内容を明確に記述し、以下のプレフィックスを使用してください：

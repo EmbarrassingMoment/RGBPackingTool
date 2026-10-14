@@ -16,3 +16,6 @@ jobs:
 
       - name: Check Docs/Headless*.md against the code
         run: python3 Tools/check_headless_docs.py
+
+      - name: Self-test the AI eval grader
+        run: python3 Tools/ai_eval/run_eval.py selftest
