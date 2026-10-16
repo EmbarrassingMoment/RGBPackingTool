@@ -1,0 +1,371 @@
+{
+  "version": 1,
+  "notes": "Hand-written cases for run_eval.py. Each case gives the model a request in natural language; the model writes a job file, and the grader compares what that job file would do (jobsim.simulate) with what the gold job file does in the same world. Gold answers are human-written and checked against the C++ source. Asset names avoid the ones used in Docs/Headless*.md so an answer cannot be copied from an example. 'equivalents' are differently written answers that do the same thing, which selftest asserts the grader accepts; 'negatives' are plausible wrong answers that selftest asserts the grader rejects; 'expect' is a substring of a diff field the grader must report for it.",
+  "cases": [
+    {
+      "id": "pack-orm-basic",
+      "tags": ["pack", "output-folder"],
+      "prompt": {
+        "en": "Pack the cliff textures /Game/Env/Cliff/T_Cliff_AO, /Game/Env/Cliff/T_Cliff_Roughness and /Game/Env/Cliff/T_Cliff_Metallic into a standard ORM texture. Put it in the same folder as the inputs.",
+        "ja": "崖のテクスチャ /Game/Env/Cliff/T_Cliff_AO、/Game/Env/Cliff/T_Cliff_Roughness、/Game/Env/Cliff/T_Cliff_Metallic を標準的な ORM テクスチャにパックしてください。出力は入力と同じフォルダに置いてください。"
+      },
+      "world": {
+        "/Game/Env/Cliff/T_Cliff_AO": {"size": [2048, 2048]},
+        "/Game/Env/Cliff/T_Cliff_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Cliff/T_Cliff_Metallic": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Cliff/T_Cliff_AO", "G": "/Game/Env/Cliff/T_Cliff_Roughness", "B": "/Game/Env/Cliff/T_Cliff_Metallic"}, "outputPath": "/Game/Env/Cliff"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "Pack", "inputs": {"R": "Texture2D'/Game/Env/Cliff/T_Cliff_AO.T_Cliff_AO'", "G": "/Game/Env/Cliff/T_Cliff_Roughness.T_Cliff_Roughness", "B": {"texture": "/Game/Env/Cliff/T_Cliff_Metallic", "channel": "red", "invert": false}, "A": null}, "width": 2048, "height": 2048, "outputPath": "/Game/Env/Cliff/", "outputName": "T_Cliff_ORM", "compression": "masks", "overwrite": "fail", "save": true, "dryRun": false}]}
+      ],
+      "negatives": [
+        {"why": "outputPath left at its /Game default", "expect": "pack.output",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Cliff/T_Cliff_AO", "G": "/Game/Env/Cliff/T_Cliff_Roughness", "B": "/Game/Env/Cliff/T_Cliff_Metallic"}}]}},
+        {"why": "AO and Metallic swapped", "expect": "pack.inputs.R.texture",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Cliff/T_Cliff_Metallic", "G": "/Game/Env/Cliff/T_Cliff_Roughness", "B": "/Game/Env/Cliff/T_Cliff_AO"}, "outputPath": "/Game/Env/Cliff"}]}},
+        {"why": "slot keys spelled out (only R/G/B/A are accepted)", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"Red": "/Game/Env/Cliff/T_Cliff_AO", "Green": "/Game/Env/Cliff/T_Cliff_Roughness", "Blue": "/Game/Env/Cliff/T_Cliff_Metallic"}, "outputPath": "/Game/Env/Cliff"}]}},
+        {"why": "a file-system path instead of a content path", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Cliff/T_Cliff_AO", "G": "/Game/Env/Cliff/T_Cliff_Roughness", "B": "/Game/Env/Cliff/T_Cliff_Metallic"}, "outputPath": "/Content/Env/Cliff"}]}}
+      ]
+    },
+    {
+      "id": "pack-mra-order",
+      "tags": ["pack", "preset-layout"],
+      "prompt": {
+        "en": "Our engine expects MRA-packed masks. Pack /Game/Items/Barrel/T_Barrel_Metallic, /Game/Items/Barrel/T_Barrel_Roughness and /Game/Items/Barrel/T_Barrel_AO into an MRA texture in /Game/Items/Barrel.",
+        "ja": "このプロジェクトのシェーダーは MRA 形式のマスクを前提にしています。/Game/Items/Barrel/T_Barrel_Metallic、/Game/Items/Barrel/T_Barrel_Roughness、/Game/Items/Barrel/T_Barrel_AO を MRA テクスチャにパックし、/Game/Items/Barrel に出力してください。"
+      },
+      "world": {
+        "/Game/Items/Barrel/T_Barrel_Metallic": {"size": [1024, 1024]},
+        "/Game/Items/Barrel/T_Barrel_Roughness": {"size": [1024, 1024]},
+        "/Game/Items/Barrel/T_Barrel_AO": {"size": [1024, 1024]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "MRA", "inputs": {"R": "/Game/Items/Barrel/T_Barrel_Metallic", "G": "/Game/Items/Barrel/T_Barrel_Roughness", "B": "/Game/Items/Barrel/T_Barrel_AO"}, "outputPath": "/Game/Items/Barrel"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Items/Barrel/T_Barrel_Metallic", "G": "/Game/Items/Barrel/T_Barrel_Roughness", "B": "/Game/Items/Barrel/T_Barrel_AO"}, "suffix": "_MRA", "outputPath": "/Game/Items/Barrel"}]}
+      ],
+      "negatives": [
+        {"why": "ORM slot order under the MRA preset", "expect": "pack.inputs.R.texture",
+         "answer": {"jobs": [{"mode": "pack", "preset": "MRA", "inputs": {"R": "/Game/Items/Barrel/T_Barrel_AO", "G": "/Game/Items/Barrel/T_Barrel_Roughness", "B": "/Game/Items/Barrel/T_Barrel_Metallic"}, "outputPath": "/Game/Items/Barrel"}]}},
+        {"why": "MRA order but no preset, so the name gets the default _ORM suffix", "expect": "pack.output",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Items/Barrel/T_Barrel_Metallic", "G": "/Game/Items/Barrel/T_Barrel_Roughness", "B": "/Game/Items/Barrel/T_Barrel_AO"}, "outputPath": "/Game/Items/Barrel"}]}}
+      ]
+    },
+    {
+      "id": "pack-invert-alpha",
+      "tags": ["pack", "invert"],
+      "prompt": {
+        "en": "Make a mask texture for the ship hull: ambient occlusion in red, metallic in green, blue left empty, and smoothness in alpha. We only have a roughness map, so use it inverted for smoothness. The textures are /Game/Vehicles/Hull/T_Hull_AO, /Game/Vehicles/Hull/T_Hull_Metallic and /Game/Vehicles/Hull/T_Hull_Roughness. Name the result T_Hull_MS and put it in the same folder.",
+        "ja": "船体用のマスクテクスチャを作ってください。赤にアンビエントオクルージョン、緑にメタリック、青は空のまま、アルファにスムースネスを入れます。スムースネスのマップはなくラフネスしかないので、ラフネスを反転して使ってください。テクスチャは /Game/Vehicles/Hull/T_Hull_AO、/Game/Vehicles/Hull/T_Hull_Metallic、/Game/Vehicles/Hull/T_Hull_Roughness です。出力名は T_Hull_MS とし、同じフォルダに置いてください。"
+      },
+      "world": {
+        "/Game/Vehicles/Hull/T_Hull_AO": {"size": [2048, 2048]},
+        "/Game/Vehicles/Hull/T_Hull_Metallic": {"size": [2048, 2048]},
+        "/Game/Vehicles/Hull/T_Hull_Roughness": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Vehicles/Hull/T_Hull_AO", "G": "/Game/Vehicles/Hull/T_Hull_Metallic", "A": {"texture": "/Game/Vehicles/Hull/T_Hull_Roughness", "invert": true}}, "outputPath": "/Game/Vehicles/Hull", "outputName": "T_Hull_MS"}]},
+      "negatives": [
+        {"why": "roughness not inverted", "expect": "pack.inputs.A.invert",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Vehicles/Hull/T_Hull_AO", "G": "/Game/Vehicles/Hull/T_Hull_Metallic", "A": "/Game/Vehicles/Hull/T_Hull_Roughness"}, "outputPath": "/Game/Vehicles/Hull", "outputName": "T_Hull_MS"}]}},
+        {"why": "invert placed on the job instead of the input", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Vehicles/Hull/T_Hull_AO", "G": "/Game/Vehicles/Hull/T_Hull_Metallic", "A": "/Game/Vehicles/Hull/T_Hull_Roughness"}, "invert": {"A": true}, "outputPath": "/Game/Vehicles/Hull", "outputName": "T_Hull_MS"}]}}
+      ]
+    },
+    {
+      "id": "pack-source-channel",
+      "tags": ["pack", "source-channel"],
+      "prompt": {
+        "en": "/Game/Env/Bark/T_Bark_ORM is already channel-packed; its roughness is in the green channel. Build a new texture with that roughness in red and the height map /Game/Env/Bark/T_Bark_Height in green, saved as /Game/Env/Bark/T_Bark_RH.",
+        "ja": "/Game/Env/Bark/T_Bark_ORM はチャンネルパック済みで、ラフネスは緑チャンネルに入っています。そのラフネスを赤に、ハイトマップ /Game/Env/Bark/T_Bark_Height を緑に入れた新しいテクスチャを /Game/Env/Bark/T_Bark_RH として作ってください。"
+      },
+      "world": {
+        "/Game/Env/Bark/T_Bark_ORM": {"size": [2048, 2048]},
+        "/Game/Env/Bark/T_Bark_Height": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "inputs": {"R": {"texture": "/Game/Env/Bark/T_Bark_ORM", "channel": "G"}, "G": "/Game/Env/Bark/T_Bark_Height"}, "outputPath": "/Game/Env/Bark", "outputName": "T_Bark_RH"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "pack", "preset": "Custom", "inputs": {"R": {"texture": "/Game/Env/Bark/T_Bark_ORM", "channel": "Green"}, "G": {"texture": "/Game/Env/Bark/T_Bark_Height"}}, "outputPath": "/Game/Env/Bark", "outputName": "T_Bark_RH"}]}
+      ],
+      "negatives": [
+        {"why": "the Python field name source_channel used in the job file", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": {"texture": "/Game/Env/Bark/T_Bark_ORM", "source_channel": "G"}, "G": "/Game/Env/Bark/T_Bark_Height"}, "outputPath": "/Game/Env/Bark", "outputName": "T_Bark_RH"}]}},
+        {"why": "reads the red channel (AO) instead of green", "expect": "pack.inputs.R.channel",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/Env/Bark/T_Bark_ORM", "G": "/Game/Env/Bark/T_Bark_Height"}, "outputPath": "/Game/Env/Bark", "outputName": "T_Bark_RH"}]}}
+      ]
+    },
+    {
+      "id": "pack-nonsquare",
+      "tags": ["pack", "size"],
+      "prompt": {
+        "en": "Pack /Game/UI/Atlas/T_Atlas_Mask1 into red and /Game/UI/Atlas/T_Atlas_Mask2 into green as a 2048x1024 (width x height) texture named T_Atlas_Masks in /Game/UI/Atlas.",
+        "ja": "/Game/UI/Atlas/T_Atlas_Mask1 を赤に、/Game/UI/Atlas/T_Atlas_Mask2 を緑にパックして、幅 2048・高さ 1024 のテクスチャ T_Atlas_Masks を /Game/UI/Atlas に作ってください。"
+      },
+      "world": {
+        "/Game/UI/Atlas/T_Atlas_Mask1": {"size": [1024, 512]},
+        "/Game/UI/Atlas/T_Atlas_Mask2": {"size": [1024, 512]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/UI/Atlas/T_Atlas_Mask1", "G": "/Game/UI/Atlas/T_Atlas_Mask2"}, "width": 2048, "height": 1024, "outputPath": "/Game/UI/Atlas", "outputName": "T_Atlas_Masks"}]},
+      "negatives": [
+        {"why": "a resolution field the schema does not have", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/UI/Atlas/T_Atlas_Mask1", "G": "/Game/UI/Atlas/T_Atlas_Mask2"}, "resolution": [2048, 1024], "outputPath": "/Game/UI/Atlas", "outputName": "T_Atlas_Masks"}]}},
+        {"why": "width and height swapped", "expect": "pack.size",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/UI/Atlas/T_Atlas_Mask1", "G": "/Game/UI/Atlas/T_Atlas_Mask2"}, "width": 1024, "height": 2048, "outputPath": "/Game/UI/Atlas", "outputName": "T_Atlas_Masks"}]}}
+      ]
+    },
+    {
+      "id": "pack-downscale",
+      "tags": ["pack", "size"],
+      "prompt": {
+        "en": "Pack /Game/Env/Grass/T_Grass_AO, /Game/Env/Grass/T_Grass_Roughness and /Game/Env/Grass/T_Grass_Metallic (all 2048x2048) into an ORM texture in /Game/Env/Grass, downscaled to 512x512 because it is only used on distant LODs.",
+        "ja": "/Game/Env/Grass/T_Grass_AO、/Game/Env/Grass/T_Grass_Roughness、/Game/Env/Grass/T_Grass_Metallic（いずれも 2048x2048）を ORM テクスチャにパックして /Game/Env/Grass に出力してください。遠景の LOD でしか使わないので、512x512 に縮小してください。"
+      },
+      "world": {
+        "/Game/Env/Grass/T_Grass_AO": {"size": [2048, 2048]},
+        "/Game/Env/Grass/T_Grass_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Grass/T_Grass_Metallic": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Grass/T_Grass_AO", "G": "/Game/Env/Grass/T_Grass_Roughness", "B": "/Game/Env/Grass/T_Grass_Metallic"}, "width": 512, "height": 512, "outputPath": "/Game/Env/Grass"}]},
+      "negatives": [
+        {"why": "only the width given (ErrorInvalidResolution)", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Grass/T_Grass_AO", "G": "/Game/Env/Grass/T_Grass_Roughness", "B": "/Game/Env/Grass/T_Grass_Metallic"}, "width": 512, "outputPath": "/Game/Env/Grass"}]}},
+        {"why": "size left at the inputs' size", "expect": "pack.size",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Grass/T_Grass_AO", "G": "/Game/Env/Grass/T_Grass_Roughness", "B": "/Game/Env/Grass/T_Grass_Metallic"}, "outputPath": "/Game/Env/Grass"}]}}
+      ]
+    },
+    {
+      "id": "pack-empty-slots",
+      "tags": ["pack", "slot-defaults"],
+      "prompt": {
+        "en": "Create /Game/FX/Smoke/T_Smoke_Mask with /Game/FX/Smoke/T_Smoke_Density in red and /Game/FX/Smoke/T_Smoke_Noise in green. Blue must stay black and alpha fully opaque.",
+        "ja": "/Game/FX/Smoke/T_Smoke_Density を赤、/Game/FX/Smoke/T_Smoke_Noise を緑に入れたテクスチャ /Game/FX/Smoke/T_Smoke_Mask を作ってください。青は黒のまま、アルファは完全に不透明にしてください。"
+      },
+      "world": {
+        "/Game/FX/Smoke/T_Smoke_Density": {"size": [512, 512]},
+        "/Game/FX/Smoke/T_Smoke_Noise": {"size": [512, 512]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/FX/Smoke/T_Smoke_Density", "G": "/Game/FX/Smoke/T_Smoke_Noise"}, "outputPath": "/Game/FX/Smoke", "outputName": "T_Smoke_Mask"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/FX/Smoke/T_Smoke_Density", "G": "/Game/FX/Smoke/T_Smoke_Noise", "B": null, "A": null}, "outputPath": "/Game/FX/Smoke", "outputName": "T_Smoke_Mask"}]}
+      ],
+      "negatives": [
+        {"why": "a texture put into blue", "expect": "pack.inputs.B.texture",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/FX/Smoke/T_Smoke_Density", "G": "/Game/FX/Smoke/T_Smoke_Noise", "B": "/Game/FX/Smoke/T_Smoke_Noise"}, "outputPath": "/Game/FX/Smoke", "outputName": "T_Smoke_Mask"}]}},
+        {"why": "output name given without its folder", "expect": "pack.output",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": "/Game/FX/Smoke/T_Smoke_Density", "G": "/Game/FX/Smoke/T_Smoke_Noise"}, "outputName": "T_Smoke_Mask"}]}}
+      ]
+    },
+    {
+      "id": "pack-grayscale-single",
+      "tags": ["pack", "compression"],
+      "prompt": {
+        "en": "The blue channel of /Game/Env/Terrain/T_Terrain_Splat holds the snow mask. Copy just that channel into the red channel of a new texture T_Terrain_SnowMask in the same folder, with Grayscale compression.",
+        "ja": "/Game/Env/Terrain/T_Terrain_Splat の青チャンネルには雪のマスクが入っています。そのチャンネルだけを、同じフォルダに作る新しいテクスチャ T_Terrain_SnowMask の赤チャンネルにコピーしてください。圧縮設定は Grayscale にしてください。"
+      },
+      "world": {
+        "/Game/Env/Terrain/T_Terrain_Splat": {"size": [4096, 4096]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "inputs": {"R": {"texture": "/Game/Env/Terrain/T_Terrain_Splat", "channel": "B"}}, "outputPath": "/Game/Env/Terrain", "outputName": "T_Terrain_SnowMask", "compression": "Grayscale"}]},
+      "negatives": [
+        {"why": "the engine's enum name instead of the option name (ErrorInvalidCompression)", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": {"texture": "/Game/Env/Terrain/T_Terrain_Splat", "channel": "B"}}, "outputPath": "/Game/Env/Terrain", "outputName": "T_Terrain_SnowMask", "compression": "TC_Grayscale"}]}},
+        {"why": "compression left at Masks", "expect": "pack.compression",
+         "answer": {"jobs": [{"mode": "pack", "inputs": {"R": {"texture": "/Game/Env/Terrain/T_Terrain_Splat", "channel": "B"}}, "outputPath": "/Game/Env/Terrain", "outputName": "T_Terrain_SnowMask"}]}}
+      ]
+    },
+    {
+      "id": "pack-skip-existing",
+      "tags": ["pack", "overwrite"],
+      "prompt": {
+        "en": "Write a job for the sand material: pack /Game/Env/Sand/T_Sand_AO, /Game/Env/Sand/T_Sand_Roughness and /Game/Env/Sand/T_Sand_Metallic into an ORM texture in the same folder. The job file runs every night, so if the ORM texture already exists it must be left untouched, without the job counting as failed.",
+        "ja": "砂のマテリアル用のジョブを書いてください。/Game/Env/Sand/T_Sand_AO、/Game/Env/Sand/T_Sand_Roughness、/Game/Env/Sand/T_Sand_Metallic を ORM テクスチャにパックして同じフォルダに出力します。このジョブファイルは毎晩実行されるので、ORM テクスチャが既にあれば手を付けず、かつジョブを失敗扱いにしないでください。"
+      },
+      "world": {
+        "/Game/Env/Sand/T_Sand_AO": {"size": [2048, 2048]},
+        "/Game/Env/Sand/T_Sand_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Sand/T_Sand_Metallic": {"size": [2048, 2048]},
+        "/Game/Env/Sand/T_Sand_ORM": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Sand/T_Sand_AO", "G": "/Game/Env/Sand/T_Sand_Roughness", "B": "/Game/Env/Sand/T_Sand_Metallic"}, "outputPath": "/Game/Env/Sand", "overwrite": "skip"}]},
+      "negatives": [
+        {"why": "default policy fails on the existing asset (ErrorAssetExists)", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Sand/T_Sand_AO", "G": "/Game/Env/Sand/T_Sand_Roughness", "B": "/Game/Env/Sand/T_Sand_Metallic"}, "outputPath": "/Game/Env/Sand"}]}},
+        {"why": "overwrites the existing asset", "expect": "pack.overwrite",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Sand/T_Sand_AO", "G": "/Game/Env/Sand/T_Sand_Roughness", "B": "/Game/Env/Sand/T_Sand_Metallic"}, "outputPath": "/Game/Env/Sand", "overwrite": "overwrite"}]}}
+      ]
+    },
+    {
+      "id": "pack-replace-existing",
+      "tags": ["pack", "overwrite"],
+      "prompt": {
+        "en": "The pebble roughness map was repainted. Re-pack /Game/Env/Pebble/T_Pebble_AO, /Game/Env/Pebble/T_Pebble_Roughness and /Game/Env/Pebble/T_Pebble_Metallic into ORM, replacing the existing /Game/Env/Pebble/T_Pebble_ORM.",
+        "ja": "小石のラフネスマップを描き直しました。/Game/Env/Pebble/T_Pebble_AO、/Game/Env/Pebble/T_Pebble_Roughness、/Game/Env/Pebble/T_Pebble_Metallic を ORM にパックし直して、既存の /Game/Env/Pebble/T_Pebble_ORM を置き換えてください。"
+      },
+      "world": {
+        "/Game/Env/Pebble/T_Pebble_AO": {"size": [1024, 1024]},
+        "/Game/Env/Pebble/T_Pebble_Roughness": {"size": [1024, 1024]},
+        "/Game/Env/Pebble/T_Pebble_Metallic": {"size": [1024, 1024]},
+        "/Game/Env/Pebble/T_Pebble_ORM": {"size": [1024, 1024]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Pebble/T_Pebble_AO", "G": "/Game/Env/Pebble/T_Pebble_Roughness", "B": "/Game/Env/Pebble/T_Pebble_Metallic"}, "outputPath": "/Game/Env/Pebble", "overwrite": "overwrite"}]},
+      "negatives": [
+        {"why": "default policy fails on the existing asset", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Pebble/T_Pebble_AO", "G": "/Game/Env/Pebble/T_Pebble_Roughness", "B": "/Game/Env/Pebble/T_Pebble_Metallic"}, "outputPath": "/Game/Env/Pebble"}]}},
+        {"why": "overwrite written as a boolean", "expect": "error",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Pebble/T_Pebble_AO", "G": "/Game/Env/Pebble/T_Pebble_Roughness", "B": "/Game/Env/Pebble/T_Pebble_Metallic"}, "outputPath": "/Game/Env/Pebble", "overwrite": true}]}}
+      ]
+    },
+    {
+      "id": "pack-dryrun",
+      "tags": ["pack", "dry-run"],
+      "prompt": {
+        "en": "Before anything is created, I want to see what packing /Game/Env/Log/T_Log_AO, /Game/Env/Log/T_Log_Roughness and /Game/Env/Log/T_Log_Metallic into ORM (output in /Game/Env/Log) would produce: the asset name and size. Nothing may be written.",
+        "ja": "何かを作る前に、/Game/Env/Log/T_Log_AO、/Game/Env/Log/T_Log_Roughness、/Game/Env/Log/T_Log_Metallic を ORM にパックした場合（出力先は /Game/Env/Log）に、どんな名前とサイズのアセットができるかを確認したいです。何も書き込まないでください。"
+      },
+      "world": {
+        "/Game/Env/Log/T_Log_AO": {"size": [2048, 1024]},
+        "/Game/Env/Log/T_Log_Roughness": {"size": [2048, 1024]},
+        "/Game/Env/Log/T_Log_Metallic": {"size": [2048, 1024]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Log/T_Log_AO", "G": "/Game/Env/Log/T_Log_Roughness", "B": "/Game/Env/Log/T_Log_Metallic"}, "outputPath": "/Game/Env/Log", "dryRun": true}]},
+      "equivalents": [
+        {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Log/T_Log_AO", "G": "/Game/Env/Log/T_Log_Roughness", "B": "/Game/Env/Log/T_Log_Metallic"}, "outputPath": "/Game/Env/Log", "dryRun": true, "save": false}]}
+      ],
+      "negatives": [
+        {"why": "save off still creates the asset in memory", "expect": "pack.status",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Log/T_Log_AO", "G": "/Game/Env/Log/T_Log_Roughness", "B": "/Game/Env/Log/T_Log_Metallic"}, "outputPath": "/Game/Env/Log", "save": false}]}}
+      ]
+    },
+    {
+      "id": "pack-nosave",
+      "tags": ["pack", "save"],
+      "prompt": {
+        "en": "Pack /Game/Env/Fern/T_Fern_AO, /Game/Env/Fern/T_Fern_Roughness and /Game/Env/Fern/T_Fern_Metallic into ORM in /Game/Env/Fern, but do not save the package to disk: I will review it in the editor and save it myself.",
+        "ja": "/Game/Env/Fern/T_Fern_AO、/Game/Env/Fern/T_Fern_Roughness、/Game/Env/Fern/T_Fern_Metallic を ORM にパックして /Game/Env/Fern に作成してください。ただしパッケージはディスクに保存しないでください。エディタで確認してから自分で保存します。"
+      },
+      "world": {
+        "/Game/Env/Fern/T_Fern_AO": {"size": [1024, 1024]},
+        "/Game/Env/Fern/T_Fern_Roughness": {"size": [1024, 1024]},
+        "/Game/Env/Fern/T_Fern_Metallic": {"size": [1024, 1024]}
+      },
+      "gold": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Fern/T_Fern_AO", "G": "/Game/Env/Fern/T_Fern_Roughness", "B": "/Game/Env/Fern/T_Fern_Metallic"}, "outputPath": "/Game/Env/Fern", "save": false}]},
+      "negatives": [
+        {"why": "saved by default", "expect": "pack.save",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Fern/T_Fern_AO", "G": "/Game/Env/Fern/T_Fern_Roughness", "B": "/Game/Env/Fern/T_Fern_Metallic"}, "outputPath": "/Game/Env/Fern"}]}},
+        {"why": "dry run creates nothing to review", "expect": "pack.status",
+         "answer": {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Fern/T_Fern_AO", "G": "/Game/Env/Fern/T_Fern_Roughness", "B": "/Game/Env/Fern/T_Fern_Metallic"}, "outputPath": "/Game/Env/Fern", "dryRun": true}]}}
+      ]
+    },
+    {
+      "id": "unpack-orm",
+      "tags": ["unpack", "preset-suffixes"],
+      "prompt": {
+        "en": "Split /Game/Env/Wall/T_Wall_ORM into separate AO, roughness and metallic textures, named with the usual _AO, _Roughness and _Metallic suffixes, in /Game/Env/Wall/Split. Its alpha channel is unused.",
+        "ja": "/Game/Env/Wall/T_Wall_ORM を AO・ラフネス・メタリックの個別のテクスチャに分解して、/Game/Env/Wall/Split に出力してください。名前には通常どおり _AO、_Roughness、_Metallic のサフィックスを付けます。アルファチャンネルは使われていません。"
+      },
+      "world": {
+        "/Game/Env/Wall/T_Wall_ORM": {"size": [2048, 2048], "uniform": ["A"]}
+      },
+      "gold": {"jobs": [{"mode": "unpack", "preset": "ORM", "source": "/Game/Env/Wall/T_Wall_ORM", "outputPath": "/Game/Env/Wall/Split"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "unpack", "source": "/Game/Env/Wall/T_Wall_ORM.T_Wall_ORM", "channels": ["R", "G", "B"], "baseName": "T_Wall", "suffixes": {"R": "_AO", "G": "_Roughness", "B": "_Metallic"}, "outputPath": "/Game/Env/Wall/Split"}]}
+      ],
+      "negatives": [
+        {"why": "no preset, so the outputs get _R/_G/_B suffixes", "expect": "unpack.outputs.R",
+         "answer": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Wall/T_Wall_ORM", "outputPath": "/Game/Env/Wall/Split"}]}},
+        {"why": "exports the unused alpha too", "expect": "unpack.outputs.A",
+         "answer": {"jobs": [{"mode": "unpack", "preset": "ORM", "source": "/Game/Env/Wall/T_Wall_ORM", "channels": "all", "outputPath": "/Game/Env/Wall/Split"}]}}
+      ]
+    },
+    {
+      "id": "unpack-all",
+      "tags": ["unpack", "uniform-channels"],
+      "prompt": {
+        "en": "Split /Game/Env/Leaf/T_Leaf_Mask into one texture per channel (R, G, B and A) in /Game/Env/Leaf. Export all four, even a channel whose pixels all have the same value.",
+        "ja": "/Game/Env/Leaf/T_Leaf_Mask をチャンネルごと（R・G・B・A）のテクスチャに分解して /Game/Env/Leaf に出力してください。全ピクセルが同じ値のチャンネルがあっても、4つすべて出力してください。"
+      },
+      "world": {
+        "/Game/Env/Leaf/T_Leaf_Mask": {"size": [1024, 1024], "uniform": ["A"]}
+      },
+      "gold": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Leaf/T_Leaf_Mask", "channels": "all", "outputPath": "/Game/Env/Leaf"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "unpack", "source": "/Game/Env/Leaf/T_Leaf_Mask", "channels": ["R", "G", "B", "A"], "outputPath": "/Game/Env/Leaf"}]}
+      ],
+      "negatives": [
+        {"why": "auto mode skips the uniform alpha", "expect": "unpack.outputs.A",
+         "answer": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Leaf/T_Leaf_Mask", "outputPath": "/Game/Env/Leaf"}]}}
+      ]
+    },
+    {
+      "id": "unpack-select-rename",
+      "tags": ["unpack", "suffixes"],
+      "prompt": {
+        "en": "From /Game/Env/Ivy/T_Ivy_Packed, extract only the red channel as T_Ivy_Height and the alpha channel as T_Ivy_Opacity, both in /Game/Env/Ivy.",
+        "ja": "/Game/Env/Ivy/T_Ivy_Packed から、赤チャンネルだけを T_Ivy_Height として、アルファチャンネルだけを T_Ivy_Opacity として取り出してください。どちらも /Game/Env/Ivy に出力します。"
+      },
+      "world": {
+        "/Game/Env/Ivy/T_Ivy_Packed": {"size": [1024, 1024]}
+      },
+      "gold": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Ivy/T_Ivy_Packed", "channels": ["R", "A"], "suffixes": {"R": "_Height", "A": "_Opacity"}, "outputPath": "/Game/Env/Ivy"}]},
+      "equivalents": [
+        {"jobs": [{"mode": "unpack", "source": "/Game/Env/Ivy/T_Ivy_Packed", "channels": ["red", "alpha"], "baseName": "T_Ivy", "suffixes": {"R": "_Height", "G": "_G", "B": "_B", "A": "_Opacity"}, "outputPath": "/Game/Env/Ivy"}]}
+      ],
+      "negatives": [
+        {"why": "no channel selection, so G and B are exported too", "expect": "unpack.outputs.G",
+         "answer": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Ivy/T_Ivy_Packed", "suffixes": {"R": "_Height", "A": "_Opacity"}, "outputPath": "/Game/Env/Ivy"}]}},
+        {"why": "full names given as the base name", "expect": "unpack.outputs.R",
+         "answer": {"jobs": [{"mode": "unpack", "source": "/Game/Env/Ivy/T_Ivy_Packed", "channels": ["R", "A"], "baseName": "T_Ivy_Height", "suffixes": {"R": "", "A": "_Opacity"}, "outputPath": "/Game/Env/Ivy"}]}}
+      ]
+    },
+    {
+      "id": "unpack-mra",
+      "tags": ["unpack", "preset-layout"],
+      "prompt": {
+        "en": "/Game/Weapons/Rifle/T_Rifle_MRA uses the MRA layout. Unpack it into separate textures in /Game/Weapons/Rifle/Split, each named after what its channel holds. The alpha channel is unused.",
+        "ja": "/Game/Weapons/Rifle/T_Rifle_MRA は MRA レイアウトです。これを個別のテクスチャに分解して /Game/Weapons/Rifle/Split に出力し、それぞれのチャンネルの中身がわかる名前を付けてください。アルファチャンネルは使われていません。"
+      },
+      "world": {
+        "/Game/Weapons/Rifle/T_Rifle_MRA": {"size": [2048, 2048], "uniform": ["A"]}
+      },
+      "gold": {"jobs": [{"mode": "unpack", "preset": "MRA", "source": "/Game/Weapons/Rifle/T_Rifle_MRA", "outputPath": "/Game/Weapons/Rifle/Split"}]},
+      "negatives": [
+        {"why": "ORM suffixes on an MRA texture: the AO name gets the metallic data", "expect": "unpack.outputs.R",
+         "answer": {"jobs": [{"mode": "unpack", "preset": "ORM", "source": "/Game/Weapons/Rifle/T_Rifle_MRA", "outputPath": "/Game/Weapons/Rifle/Split"}]}}
+      ]
+    },
+    {
+      "id": "batch-three",
+      "tags": ["batch", "multiple-jobs"],
+      "prompt": {
+        "en": "Pack ORM textures for three boulders in one job file. Each boulder X in A, B and C has /Game/Env/Boulders/T_BoulderX_AO, /Game/Env/Boulders/T_BoulderX_Roughness and /Game/Env/Boulders/T_BoulderX_Metallic. Outputs go in /Game/Env/Boulders.",
+        "ja": "3つの岩の ORM テクスチャを1つのジョブファイルでパックしてください。岩 X（A、B、C）ごとに /Game/Env/Boulders/T_BoulderX_AO、/Game/Env/Boulders/T_BoulderX_Roughness、/Game/Env/Boulders/T_BoulderX_Metallic があります。出力先は /Game/Env/Boulders です。"
+      },
+      "world": {
+        "/Game/Env/Boulders/T_BoulderA_AO": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderA_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderA_Metallic": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderB_AO": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderB_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderB_Metallic": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderC_AO": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderC_Roughness": {"size": [2048, 2048]},
+        "/Game/Env/Boulders/T_BoulderC_Metallic": {"size": [2048, 2048]}
+      },
+      "gold": {"jobs": [
+        {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderA_AO", "G": "/Game/Env/Boulders/T_BoulderA_Roughness", "B": "/Game/Env/Boulders/T_BoulderA_Metallic"}, "outputPath": "/Game/Env/Boulders"},
+        {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderB_AO", "G": "/Game/Env/Boulders/T_BoulderB_Roughness", "B": "/Game/Env/Boulders/T_BoulderB_Metallic"}, "outputPath": "/Game/Env/Boulders"},
+        {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderC_AO", "G": "/Game/Env/Boulders/T_BoulderC_Roughness", "B": "/Game/Env/Boulders/T_BoulderC_Metallic"}, "outputPath": "/Game/Env/Boulders"}
+      ]},
+      "equivalents": [
+        {"jobs": [{"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderC_AO", "G": "/Game/Env/Boulders/T_BoulderC_Roughness", "B": "/Game/Env/Boulders/T_BoulderC_Metallic"}, "outputPath": "/Game/Env/Boulders"}, {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderB_AO", "G": "/Game/Env/Boulders/T_BoulderB_Roughness", "B": "/Game/Env/Boulders/T_BoulderB_Metallic"}, "outputPath": "/Game/Env/Boulders"}, {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderA_AO", "G": "/Game/Env/Boulders/T_BoulderA_Roughness", "B": "/Game/Env/Boulders/T_BoulderA_Metallic"}, "outputPath": "/Game/Env/Boulders"}]}
+      ],
+      "negatives": [
+        {"why": "one boulder missing", "expect": "jobs",
+         "answer": {"jobs": [
+           {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderA_AO", "G": "/Game/Env/Boulders/T_BoulderA_Roughness", "B": "/Game/Env/Boulders/T_BoulderA_Metallic"}, "outputPath": "/Game/Env/Boulders"},
+           {"mode": "pack", "preset": "ORM", "inputs": {"R": "/Game/Env/Boulders/T_BoulderB_AO", "G": "/Game/Env/Boulders/T_BoulderB_Roughness", "B": "/Game/Env/Boulders/T_BoulderB_Metallic"}, "outputPath": "/Game/Env/Boulders"}
+         ]}}
+      ]
+    }
+  ]
+}

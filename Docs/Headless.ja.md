@@ -126,7 +126,7 @@ UnrealEditor-Cmd.exe <Project>.uproject -run=TextureChannelPacker -Job=jobs.json
 - `status`: `Succeeded`、`Skipped`、`DryRun`、`Failed` のいずれか。
 - `errorCode`: 言語に依存しない安定した識別子です。分岐にはこちらを使ってください（`message` はエディタの言語設定に従います）。
 - `outputs`: 書き込んだ（`save` が有効なら保存まで完了した）アセットのオブジェクトパス。`DryRun` / `Skipped` の場合は、ジョブの対象となるパス。ジョブが失敗した場合は空です（アンパックで、失敗前に書き込み済みのチャンネルがある場合はそれだけを含みます）。
-- `warnings`: 致命的でない問題。各要素は `{ "code", "channel", "message" }`。パックの場合、入力を読み込めなかったためスロットをデフォルト値で埋めたことを意味します。
+- `warnings`: 致命的でない問題。各要素は `{ "code", "channel", "message" }`。パックの場合、入力を読み込めなかったためスロットをデフォルト値で埋めたことを意味します。アンパックの場合は、アセットを作成または保存できなかったチャンネルを示します（残りのチャンネルの処理は続行されます）。
 - 実行を開始できなかった場合（引数の誤り、ジョブファイルを読めないなど）は、`"error": { "code", "message" }` と空の `results` 配列が出力されます。
 
 ## Python
@@ -161,7 +161,9 @@ else:
 | `make_pack_request_from_preset(name)` / `make_unpack_request_from_preset(name)` | プリセットの既定値でリクエストを埋めます。その名前のプリセットがなければ `False` を返します。 |
 | `get_preset_names()` | 組み込みプリセットとユーザープリセットの名前一覧。 |
 
-リクエストのフィールドはジョブファイルと対応しています（`width`、`height`、`output_path`、`output_name`、`file_name_suffix`、`compression`、`overwrite_policy`、`save`、`dry_run`。アンパックでは `source`、`export_red`〜`export_alpha`、`skip_uniform_channels`、`base_name`、`suffix_red`〜`suffix_alpha`）。エディタツールと異なり、`save` の既定値は `True` です。
+パックリクエストはスロットごとに `ChannelPackerInput`（`red`、`green`、`blue`、`alpha`）を持ち、それぞれ `texture`、`source_channel`（`unreal.ChannelPackerChannel`。ジョブファイルの `channel` に相当）、`invert` を指定します。その他のリクエストのフィールドはジョブファイルと対応しています（`width`、`height`、`output_path`、`output_name`、`file_name_suffix`、`compression`、`overwrite_policy`、`save`、`dry_run`。アンパックでは `source`、`export_red`〜`export_alpha`、`skip_uniform_channels`、`base_name`、`suffix_red`〜`suffix_alpha`）。エディタツールと異なり、`save` の既定値は `True` です。
+
+`ChannelPackerResult` は結果ファイルの各要素と同じ内容を Python の名前で保持します: `status`、`error_code`、`message`、`output_assets`、`warnings`（各要素は `code`、`channel`、`message` を持つ `ChannelPackerWarning`）、`width`、`height`、`skipped_uniform_channels`。
 
 ## 動作に関する補足
 
@@ -180,10 +182,13 @@ else:
 | `ErrorInvalidCompression` | 不明な圧縮設定名。 |
 | `ErrorAssetExists` | 出力が既に存在し、上書きポリシーが `Fail`。 |
 | `ErrorAssetTypeMismatch` | 出力名が別クラスのオブジェクトで使用されている。 |
+| `ErrorPackageCreation` | 出力パッケージを作成できなかった。 |
 | `ErrorSaveFailed` | パッケージを保存できなかった。 |
 | `ErrorNoUnpackSource`, `ErrorNoChannelsSelected` | アンパック: ソースがない、またはチャンネルが1つも指定されていない。 |
 | `ErrorNoChannelsToExport` | アンパック: 指定したチャンネルがすべて均一（それでも出力するには `"channels": "all"` を指定）。 |
 | `ErrorDuplicateOutputNames` | アンパック: 2つのチャンネルが同じ名前になる（サフィックスを確認）。 |
+| `ErrorUnpackNothingSaved` | アンパック: どのチャンネルも書き出せなかった（各チャンネルの理由は `warnings` を参照）。 |
 | `ErrorUnsupportedFormat`, `ErrorLockFailed`, `ErrorTextureTooLarge`, `ErrorInvalidSourceData`, `ErrorInvalidUnpackSource` | テクスチャのソースデータを読み込めない。パックの入力では警告扱いです（スロットはデフォルト値で埋められます）。 |
+| `ErrorNoEditorData` | プラグインがエディター専用データなしでビルドされている。ヘッドレス実行にはエディタビルドが必要。 |
 | `ErrorInvalidJob` | Commandlet: ジョブの記述がスキーマに合わない（どのフィールドかはメッセージに表示）。 |
 | `ErrorUsage`, `ErrorJobFileNotFound`, `ErrorInvalidJobFile` | Commandlet: 実行を開始できなかった。 |

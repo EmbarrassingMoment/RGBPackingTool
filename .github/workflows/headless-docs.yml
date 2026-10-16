@@ -1,0 +1,21 @@
+name: Headless Docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Docs/Headless*.md against the code
+        run: python3 Tools/check_headless_docs.py
+
+      - name: Self-test the AI eval grader
+        run: python3 Tools/ai_eval/run_eval.py selftest

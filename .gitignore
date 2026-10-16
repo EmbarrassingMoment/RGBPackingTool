@@ -74,6 +74,9 @@ latex/
 # Python (if you use Python scripts for tools)
 __pycache__/
 *.py[cod]
+
+# AI eval runs (Tools/ai_eval/run_eval.py)
+Tools/ai_eval/runs/
 # ---------------------------------------------------------------------------
 # Jules (unused)
 # ---------------------------------------------------------------------------
