@@ -7,7 +7,7 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
-## [Unreleased]
+## [1.9.0] - 2026-10-16
 
 ### 追加 (Added)
 - **ヘッドレス実行**: パックとアンパックをツールウィンドウなしで実行できるようになり、スクリプト・CI・AI エージェントのワークフローに組み込めます。詳しくは [ヘッドレス実行](Docs/Headless.ja.md) を参照してください。

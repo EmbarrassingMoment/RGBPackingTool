@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 9,
-	"VersionName": "1.8.1",
+	"Version": 10,
+	"VersionName": "1.9.0",
 	"FriendlyName": "Texture Channel Packer",
 	"Description": "A simple tool to pack RGB+A channels with auto-resizing and smart naming features. Also unpacks a packed texture back into per-channel grayscale textures.",
 	"Category": "Editor",
