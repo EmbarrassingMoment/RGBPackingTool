@@ -7,13 +7,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.9.0] - 2026-10-16
+## [1.9.0] - 2026-10-17
 
 ### Added
-- **Headless execution**: Pack and Unpack can run without the tool window, for scripts, CI, and AI-agent workflows. See [Headless Usage](Docs/Headless.md).
+- **Headless execution**: Pack and Unpack can run without the tool window, for scripts, CI, and AI-agent workflows. See [Headless Usage](RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md).
   - **Commandlet** `-run=TextureChannelPacker`: runs a JSON job file and writes a JSON result file (status, stable error code, outputs, warnings per job). Exit code `0` / `1` / `2` for success / bad arguments / failed jobs. Supports presets, a dry-run mode, and an overwrite policy (`fail` / `overwrite` / `skip`).
   - **Function library** `UTextureChannelPackerLibrary` (`PackTextures`, `UnpackTexture`, preset helpers) for Editor Python, Editor Utility Blueprints, and Remote Control.
   - Headless runs never open dialogs, save outputs to disk by default, and accept `0 x 0` as "the size of the largest input".
+  - The headless docs ship inside the plugin (`Docs/Headless.md` / `Docs/Headless.ja.md` next to the `.uplugin`), so scripts and AI agents working in a project can read them without the repository.
 - **Core automation tests** `TextureChannelPacker.Core.*` for pack/unpack output, overwrite policies, dry runs, validation, and naming.
 
 ### Changed

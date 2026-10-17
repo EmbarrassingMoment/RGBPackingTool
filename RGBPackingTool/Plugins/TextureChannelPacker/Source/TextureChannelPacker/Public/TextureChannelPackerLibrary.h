@@ -13,6 +13,8 @@
  * notification: everything is reported in the returned FChannelPackerResult. Editor-only; call it
  * on the Game Thread (Editor Utility Blueprints, Editor Python, Remote Control calls all are).
  *
+ * Full reference (request fields, Python examples, error codes): Docs/Headless.md in the plugin folder.
+ *
  * Python:
  *   red = unreal.ChannelPackerInput()
  *   red.texture = unreal.load_asset("/Game/Rock/T_Rock_AO")

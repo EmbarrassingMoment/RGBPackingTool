@@ -39,7 +39,7 @@
   - **プリセット連動サフィックス**: プリセットがチャンネルごとのアンパックサフィックスを保持します。既存のプリセットファイルは `_R`/`_G`/`_B`/`_A` をデフォルトとして読み込まれます。
   - **省メモリ設計**: プレビュー・抽出ともにフル解像度の中間バッファを作らずソースから直接読み出すため、16K テクスチャのプレビューでもギガバイト単位ではなく数百KB程度で済みます。
   - 抽出されたアセットは単一チャンネル（G8）テクスチャで、圧縮設定は `Grayscale`、`sRGB = false`、解像度はソースと同じです。
-- **ヘッドレス実行**: パックとアンパックはツールウィンドウなしでも実行できます。Commandlet（JSON のジョブファイルを渡し、JSON で結果を受け取る）、エディタの Python、Editor Utility Blueprint、Remote Control から呼び出せるため、スクリプト・CI・AI エージェントのワークフローに組み込めます。ダイアログは表示されず、結果には安定したエラーコードが付きます。詳しくは [ヘッドレス実行](Docs/Headless.ja.md) を参照してください。
+- **ヘッドレス実行**: パックとアンパックはツールウィンドウなしでも実行できます。Commandlet（JSON のジョブファイルを渡し、JSON で結果を受け取る）、エディタの Python、Editor Utility Blueprint、Remote Control から呼び出せるため、スクリプト・CI・AI エージェントのワークフローに組み込めます。ダイアログは表示されず、結果には安定したエラーコードが付きます。詳しくは [ヘッドレス実行](RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md) を参照してください。
 - **ユーザーインターフェース**:
   - **UIローカライズ**: エディタの言語設定に合わせて、UIや通知が自動的に日本語/英語に切り替わります。
   - **キャンセル可能な進捗**: テクスチャ生成中に進行状況ダイアログが表示され、処理をキャンセルすることが可能です。
@@ -172,7 +172,7 @@ Fab ストアから入手するのが最も簡単で確実です。
 UnrealEditor-Cmd.exe MyProject.uproject -run=TextureChannelPacker -Job=jobs.json -Result=result.json -unattended -nullrhi
 ```
 
-同じ操作はエディタの Python（`unreal.TextureChannelPackerLibrary.pack_textures(...)`）や Editor Utility Blueprint からも利用できます。ヘッドレス実行ではダイアログは一切表示されません。上書きは明示的なポリシー（`fail` / `overwrite` / `skip`）で制御し、出力は既定でディスクに保存され、結果には必ずステータスと安定したエラーコードが含まれます。ジョブファイルの形式・Python API・エラーコードは **[ヘッドレス実行](Docs/Headless.ja.md)** を参照してください。
+同じ操作はエディタの Python（`unreal.TextureChannelPackerLibrary.pack_textures(...)`）や Editor Utility Blueprint からも利用できます。ヘッドレス実行ではダイアログは一切表示されません。上書きは明示的なポリシー（`fail` / `overwrite` / `skip`）で制御し、出力は既定でディスクに保存され、結果には必ずステータスと安定したエラーコードが含まれます。ジョブファイルの形式・Python API・エラーコードは **[ヘッドレス実行](RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md)** を参照してください。
 
 ## 圧縮設定の解説
 

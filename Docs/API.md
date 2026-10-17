@@ -42,7 +42,7 @@ The module's primary class is `FTextureChannelPackerModule` (inherits `IModuleIn
                                  TextureChannelPackerUtils (sampling, resize)
 ```
 
-The UI keeps its confirmation dialogs and notifications, then calls the core with `OverwritePolicy = Overwrite` and `bSave = false` (the user saves the package), plus a cancellable progress dialog. Headless callers use the defaults (`Fail`, `bSave = true`, no dialog). See [Headless Usage](Headless.md) for the caller-facing API.
+The UI keeps its confirmation dialogs and notifications, then calls the core with `OverwritePolicy = Overwrite` and `bSave = false` (the user saves the package), plus a cancellable progress dialog. Headless callers use the defaults (`Fail`, `bSave = true`, no dialog). See [Headless Usage](../RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md) for the caller-facing API.
 
 ### Public Interface
 

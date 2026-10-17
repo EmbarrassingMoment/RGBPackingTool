@@ -35,7 +35,7 @@ import jobsim
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-DOCS = {"en": ROOT / "Docs/Headless.md", "ja": ROOT / "Docs/Headless.ja.md"}
+DOCS = {"en": ROOT / "RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md", "ja": ROOT / "RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md"}
 
 # USD per million tokens (input, output). Cache writes cost 1.25x input, cache reads 0.1x input.
 PRICES = {

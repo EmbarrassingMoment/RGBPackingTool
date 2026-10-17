@@ -42,7 +42,7 @@
                               TextureChannelPackerUtils（サンプリング、リサイズ）
 ```
 
-UI は確認ダイアログと通知を従来どおり担当し、そのうえで `OverwritePolicy = Overwrite`、`bSave = false`（保存はユーザーが行う）、キャンセル可能な進捗ダイアログ付きでコアを呼び出します。ヘッドレスの呼び出し側は既定値（`Fail`、`bSave = true`、ダイアログなし）を使います。呼び出し側向けの API は [ヘッドレス実行](Headless.ja.md) を参照してください。
+UI は確認ダイアログと通知を従来どおり担当し、そのうえで `OverwritePolicy = Overwrite`、`bSave = false`（保存はユーザーが行う）、キャンセル可能な進捗ダイアログ付きでコアを呼び出します。ヘッドレスの呼び出し側は既定値（`Fail`、`bSave = true`、ダイアログなし）を使います。呼び出し側向けの API は [ヘッドレス実行](../RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md) を参照してください。
 
 ### パブリックインターフェース
 

@@ -3,7 +3,7 @@
 	"Version": 10,
 	"VersionName": "1.9.0",
 	"FriendlyName": "Texture Channel Packer",
-	"Description": "A simple tool to pack RGB+A channels with auto-resizing and smart naming features. Also unpacks a packed texture back into per-channel grayscale textures.",
+	"Description": "A simple tool to pack RGB+A channels with auto-resizing and smart naming features. Also unpacks a packed texture back into per-channel grayscale textures. Includes a headless commandlet and a Python / Blueprint function library; see Docs/Headless.md in the plugin folder.",
 	"Category": "Editor",
 	"CreatedBy": "EmbarrassingMoment",
 	"CreatedByURL": "https://github.com/EmbarrassingMoment",

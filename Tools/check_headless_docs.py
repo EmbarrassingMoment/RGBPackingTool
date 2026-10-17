@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks that the headless docs (Docs/Headless.md and Docs/Headless.ja.md) match the code.
+"""Checks that the headless docs (Docs/Headless.md and Docs/Headless.ja.md inside the plugin folder) match the code.
 
 Scripts and AI agents drive the headless API from these docs alone, so anything the code can
 return or accept but the docs do not name (or the other way round) is a trap. This script pulls
@@ -30,7 +30,7 @@ LIBRARY_H = SOURCE_DIR / "Public/TextureChannelPackerLibrary.h"
 
 # Heading of each checked section, per document. A renamed heading is reported, not skipped.
 DOCS = {
-    Path("Docs/Headless.md"): {
+    Path("RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md"): {
         "commandlet": "Commandlet",
         "pack": "Pack job",
         "unpack": "Unpack job",
@@ -38,7 +38,7 @@ DOCS = {
         "python": "Python",
         "errors": "Error Codes",
     },
-    Path("Docs/Headless.ja.md"): {
+    Path("RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md"): {
         "commandlet": "Commandlet",
         "pack": "パックジョブ",
         "unpack": "アンパックジョブ",
