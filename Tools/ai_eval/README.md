@@ -1,6 +1,6 @@
 # AI eval for the headless docs
 
-Measures whether a model can drive the headless API (`Docs/Headless.md`) from the docs alone, and which parts of the docs it gets wrong.
+Measures whether a model can drive the headless API (`RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md`) from the docs alone, and which parts of the docs it gets wrong.
 
 Each case in `tasks.json` is a request in plain language, in English and Japanese, such as "pack these three textures into an ORM texture next to the inputs". The model gets the headless docs as its system prompt and writes a job file. The grader then compares what that job file would *do* with what a hand-written gold job file does. Two job files that do the same thing pass alike, however they are written. The comparison covers inputs and channels, output assets, size, compression, overwrite policy, save and dry run.
 
