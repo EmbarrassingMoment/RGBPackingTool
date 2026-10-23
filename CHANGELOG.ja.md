@@ -7,6 +7,11 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [Unreleased]
+
+### 追加 (Added)
+- **AI コーディングエージェント向けの指示をプラグインに同梱**: `.uplugin` の隣に `AGENTS.md`（ベンダー中立。Codex、Cursor、GitHub Copilot、Gemini CLI、Jules などが読みます）と、Claude Code 向けにそれを取り込むだけの `CLAUDE.md` を追加しました。プラグインの概要、ジョブファイルと Python API の唯一のリファレンスとして `Docs/Headless.md` を読むこと、ヘッドレスジョブを実行・確認する際の指針（ドライラン、上書きポリシー、安定したエラーコード、インストール済みプラグインを編集しない）をまとめています。プロジェクト自身のエージェント指示から参照させる方法は README に記載しました。
+
 ## [1.9.0] - 2026-10-17
 
 ### 追加 (Added)

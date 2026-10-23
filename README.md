@@ -175,6 +175,8 @@ UnrealEditor-Cmd.exe MyProject.uproject -run=TextureChannelPacker -Job=jobs.json
 
 The same operations are available to Editor Python (`unreal.TextureChannelPackerLibrary.pack_textures(...)`) and Editor Utility Blueprints. Headless runs never open dialogs: overwriting is controlled by an explicit policy (`fail` / `overwrite` / `skip`), outputs are saved to disk by default, and every result reports a status and a stable error code. See **[Headless Usage](RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.md)** for the job file format, the Python API, and the error codes.
 
+**AI coding agents**: the plugin folder ships an [`AGENTS.md`](RGBPackingTool/Plugins/TextureChannelPacker/AGENTS.md) (vendor-neutral, read by Codex, Cursor, GitHub Copilot, Gemini CLI, Jules, and others) and a `CLAUDE.md` that imports it for Claude Code. They tell an agent what the plugin does, to read `Docs/Headless.md` before writing a job file, and how to run and check a headless job. Agents only load these files on their own when they work inside the plugin folder, so point yours at them with one line in your project's own `AGENTS.md` / `CLAUDE.md`, for example `For Texture Channel Packer, read Plugins/TextureChannelPacker/AGENTS.md` (when installed from Fab the path is `<Engine>/Plugins/Marketplace/TextureChannelPacker/AGENTS.md`).
+
 ## Compression Settings Explained
 
 | Setting | Best For | Description |

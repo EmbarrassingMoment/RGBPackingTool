@@ -174,6 +174,8 @@ UnrealEditor-Cmd.exe MyProject.uproject -run=TextureChannelPacker -Job=jobs.json
 
 同じ操作はエディタの Python（`unreal.TextureChannelPackerLibrary.pack_textures(...)`）や Editor Utility Blueprint からも利用できます。ヘッドレス実行ではダイアログは一切表示されません。上書きは明示的なポリシー（`fail` / `overwrite` / `skip`）で制御し、出力は既定でディスクに保存され、結果には必ずステータスと安定したエラーコードが含まれます。ジョブファイルの形式・Python API・エラーコードは **[ヘッドレス実行](RGBPackingTool/Plugins/TextureChannelPacker/Docs/Headless.ja.md)** を参照してください。
 
+**AI コーディングエージェント向け**: プラグインフォルダには [`AGENTS.md`](RGBPackingTool/Plugins/TextureChannelPacker/AGENTS.md)（ベンダー中立。Codex、Cursor、GitHub Copilot、Gemini CLI、Jules などが読みます）と、Claude Code 向けにそれを取り込むだけの `CLAUDE.md` を同梱しています。プラグインの概要、ジョブファイルを書く前に `Docs/Headless.md` を読むこと、ヘッドレスジョブの実行と結果確認の方法をエージェントに伝えます。エージェントがこれらを自動で読み込むのはプラグインフォルダ内で作業するときだけなので、プロジェクト自身の `AGENTS.md` / `CLAUDE.md` に `Texture Channel Packer については Plugins/TextureChannelPacker/AGENTS.md を読むこと` のような一行を足して参照させてください（Fab からインストールした場合のパスは `<Engine>/Plugins/Marketplace/TextureChannelPacker/AGENTS.md` です）。
+
 ## 圧縮設定の解説
 
 | 設定名 | 最適な用途 | 説明 |

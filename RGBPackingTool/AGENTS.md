@@ -64,6 +64,7 @@
     * 逆に `README.ja.md` への変更を依頼された場合も、同様に `README.md` へ反映させてください。
     * 常に日英両方のドキュメントが最新かつ同期された状態を保つことを優先します。
     * ヘッドレス API（Commandlet、`UTextureChannelPackerLibrary`、`TextureChannelPackerTypes.h`）やエラーコードを変更した場合は、`Plugins/TextureChannelPacker/Docs/Headless.md` と `Plugins/TextureChannelPacker/Docs/Headless.ja.md`（`Config/FilterPlugin.ini` 経由でプラグインに同梱されます）を更新し、`python3 Tools/check_headless_docs.py` と `python3 Tools/ai_eval/run_eval.py selftest` が成功することを確認してください（CI でも実行されます）。ジョブファイルの解釈や命名を変えた場合は `Tools/ai_eval/jobsim.py` も合わせて更新します。
+    * `Plugins/TextureChannelPacker/AGENTS.md` は、プラグインをインストールしたプロジェクトで動く AI エージェント（Codex、Cursor、Copilot、Gemini CLI、Jules、Claude Code など）向けのベンダー中立な指示で、隣の `CLAUDE.md` はそれを取り込むだけです。エージェント向けの内容は常に `AGENTS.md` に書き、`CLAUDE.md` には書かないでください。入口（Commandlet の引数や終了コード、上書きポリシー、ドライラン）を変えた場合はこのファイルも更新します。フィールド名やエラーコードの一覧は `Docs/Headless.md` に任せ、`AGENTS.md` には書きません（陳腐化を防ぐため）。
 
 8.  **コミットメッセージの規約:**
     * 変更内容を明確に記述し、以下のプレフィックスを使用してください：
