@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Instructions for AI coding agents ship inside the plugin**: `AGENTS.md` (vendor-neutral, read by Codex, Cursor, GitHub Copilot, Gemini CLI, Jules, and others) and a `CLAUDE.md` that imports it for Claude Code, next to the `.uplugin`. They summarize what the plugin does, point the agent at `Docs/Headless.md` as the only reference for the job file and Python API, and give the rules of thumb for running and checking headless jobs (dry run, overwrite policy, stable error codes, do not edit the installed plugin). The README explains how to point a project's own agent instructions at them.
+
 ## [1.9.0] - 2026-10-17
 
 ### Added
