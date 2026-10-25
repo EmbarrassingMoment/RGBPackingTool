@@ -8,7 +8,7 @@
 
 >  **初めての方はこちら！ [クイックスタートガイド](QUICK_START.ja.md) をご覧ください。**
 
-![Tool Overview](Docs/Images/ui_overview.png)
+![Tool Overview](Docs/Images/ui_overview.webp)
 
 ## 機能
 

@@ -4,7 +4,7 @@
 
 **Zero to Packed Texture in 10 seconds.**
 
-![Tool Overview](Docs/Images/workflow.gif)
+![Tool Overview](Docs/Images/workflow.webp)
 
 ## 1. Installation
 

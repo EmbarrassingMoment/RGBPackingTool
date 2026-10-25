@@ -4,7 +4,7 @@
 
 **10秒でパック済みテクスチャを作成。**
 
-![Tool Overview](Docs/Images/workflow.gif)
+![Tool Overview](Docs/Images/workflow.webp)
 
 ## 1. インストール (簡易版)
 
