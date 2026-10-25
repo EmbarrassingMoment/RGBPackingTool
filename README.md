@@ -9,7 +9,7 @@
 
 >  **First time? Check out the [Quick Start Guide](QUICK_START.md) to get started in seconds!**
 
-![Tool Overview](Docs/Images/ui_overview.png)
+![Tool Overview](Docs/Images/ui_overview.webp)
 
 ## Features
 
