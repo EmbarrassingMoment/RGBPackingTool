@@ -281,6 +281,11 @@ void FTextureChannelUnpacker::AutoGenerateBaseName()
     BaseFileName = TextureChannelPackerCore::MakeUnpackBaseName(SourceTexture->GetName(), KnownSuffixes);
 }
 
+void FTextureChannelUnpacker::SetSourceTexture(UTexture2D* NewTexture)
+{
+    OnSourceTextureChanged(NewTexture);
+}
+
 void FTextureChannelUnpacker::OnSourceTextureChanged(UTexture2D* NewTexture)
 {
     SourceTexture = NewTexture;

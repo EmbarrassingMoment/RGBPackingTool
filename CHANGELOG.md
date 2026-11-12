@@ -7,6 +7,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Keyboard shortcut**: `Ctrl+Alt+T` (`Cmd+Option+T` on Mac) opens the tool. It is shown next to the Tools menu entry and can be changed under Editor Preferences > Keyboard Shortcuts ("Texture Channel Packer").
+- **Content Browser context menu**: Right-clicking texture assets offers **Pack with Texture Channel Packer** (1 to 4 textures; they become the pack inputs, matched to channels by the current preset's channel suffixes such as `_Roughness`) and **Unpack with Texture Channel Packer** (1 texture; it becomes the unpack source).
+
+### Changed
+- The **Tools > Texture Channel Packer** entry is now in the Tools menu of asset editor windows as well, not only the level editor.
+
 ## [1.9.0] - 2026-10-17
 
 ### Added
