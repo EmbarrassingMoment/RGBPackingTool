@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Keyboard shortcut**: `Ctrl+Alt+T` (`Cmd+Option+T` on Mac) opens the tool. It is shown next to the Tools menu entry and can be changed under Editor Preferences > Keyboard Shortcuts ("Texture Channel Packer").
+- **Keyboard shortcut**: `Ctrl+Alt+R` (`Cmd+Option+R` on Mac) opens the tool. It is shown next to the Tools menu entry and can be changed under Editor Preferences > Keyboard Shortcuts ("Texture Channel Packer").
 - **Content Browser context menu**: Right-clicking texture assets offers **Pack with Texture Channel Packer** (1 to 4 textures; they become the pack inputs, matched to channels by the current preset's channel suffixes such as `_Roughness`) and **Unpack with Texture Channel Packer** (1 texture; it becomes the unpack source).
 
 ### Changed

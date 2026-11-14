@@ -14,7 +14,7 @@
 ## 2. ステップ・バイ・ステップ
 
 ### ステップ 1: ツールを開く
-メニューの **Tools (ツール) > Texture Channel Packer** を選択するか、`Ctrl+Alt+T` を押します。
+メニューの **Tools (ツール) > Texture Channel Packer** を選択するか、`Ctrl+Alt+R` を押します。
 
 コンテンツブラウザでテクスチャを右クリックして **Texture Channel Packer でパック**（または **Texture Channel Packer でアンパック**）を選ぶと、そのテクスチャが設定済みの状態でツールが開きます。
 

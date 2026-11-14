@@ -47,7 +47,7 @@
   - **Overwrite Confirmation**: A confirmation dialog appears when the output asset already exists, preventing accidental data loss.
   - **Path Picker**: Easily select the output directory from the Content Browser using the folder icon button.
   - **Toast Notifications**: Provides clear feedback (Success/Error) via non-intrusive notifications instead of just log messages.
-  - **Easy to Open**: Available from the **Tools** menu of the level editor and of asset editor windows, with a keyboard shortcut (`Ctrl+Alt+T` by default, rebindable), and from the right-click menu of texture assets in the Content Browser.
+  - **Easy to Open**: Available from the **Tools** menu of the level editor and of asset editor windows, with a keyboard shortcut (`Ctrl+Alt+R` by default, rebindable), and from the right-click menu of texture assets in the Content Browser.
 
 ## Requirements
 
@@ -110,7 +110,7 @@ If you want the latest development version or need to modify the source code:
 1. **Open the Tool**:
    Use any of the following. Each one opens the Texture Channel Packer tab, which you can dock anywhere in your editor layout.
    - **Menu**: Select **Tools > Texture Channel Packer** from the main menu bar. The entry is in the Tools menu of the level editor and of asset editor windows (Material Editor, Texture Editor, and so on).
-   - **Keyboard shortcut**: Press `Ctrl+Alt+T` (`Cmd+Option+T` on Mac). To change it, open **Editor Preferences > Keyboard Shortcuts** and search for "Texture Channel Packer".
+   - **Keyboard shortcut**: Press `Ctrl+Alt+R` (`Cmd+Option+R` on Mac). To change it, open **Editor Preferences > Keyboard Shortcuts** and search for "Texture Channel Packer".
    - **Content Browser**: Right-click texture assets and choose one of:
      - **Pack with Texture Channel Packer** (1 to 4 textures selected): opens the Pack mode with the selection as the inputs, replacing the current inputs. A texture whose name ends with a channel suffix of the current preset (e.g. `_AO`, `_Roughness`, `_Metallic` for ORM) goes to that channel; the others fill the remaining channels in order.
      - **Unpack with Texture Channel Packer** (1 texture selected): opens the Unpack mode with that texture as the source.
