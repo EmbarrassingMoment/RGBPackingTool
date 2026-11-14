@@ -7,7 +7,7 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
-## [Unreleased]
+## [1.10.0] - 2026-11-14
 
 ### 追加 (Added)
 - **キーボードショートカット**: `Ctrl+Alt+R`（Mac では `Cmd+Option+R`）でツールを開けます。「ツール」メニューの項目の横に表示され、エディタの環境設定 > キーボードショートカット（「Texture Channel Packer」）で変更できます。
