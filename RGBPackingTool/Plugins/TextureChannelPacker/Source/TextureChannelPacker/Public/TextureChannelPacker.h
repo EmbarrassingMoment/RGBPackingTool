@@ -10,6 +10,9 @@
 
 class SDockTab;
 class FSpawnTabArgs;
+class FUICommandList;
+struct FToolMenuContext;
+struct FToolMenuSection;
 class UTexture2D;
 struct FSlateBrush;
 template <typename OptionType> class SComboBox;
@@ -154,7 +157,8 @@ public:
     /**
      * @brief Called right after the module DLL has been loaded and the module object has been created.
      *
-     * Registers the Nomad Tab spawner and extends the editor menu to include the tool.
+     * Registers the Nomad Tab spawner and, when the editor UI is available, the tool's command
+     * (keyboard shortcut) and menu entries.
      */
     virtual void StartupModule() override;
 
@@ -208,8 +212,29 @@ private:
     /** Builds a pack request (inputs, source channels, invert flags, compression) from the current UI state. */
     FChannelPackerPackRequest BuildPackRequest() const;
 
-    /** Registers the Tools menu entry. Deferred via UToolMenus::RegisterStartupCallback. */
+    /**
+     * Registers the command, the Tools menu entry and the Content Browser context menu entries.
+     * Deferred via UToolMenus::RegisterStartupCallback, so it only runs when the editor UI exists.
+     */
     void RegisterMenus();
+
+    /** Registers the "open the tool" command and binds its shortcut to the main frame's command list. */
+    void RegisterCommands();
+
+    /** Opens the tool tab, or brings it to the front if it is already open. */
+    void OpenTab();
+
+    /** Adds the Pack / Unpack entries to the Content Browser context menu of texture assets. */
+    void AddAssetContextMenuEntries(FToolMenuSection& InSection);
+
+    /** Context menu action: opens the Pack mode with the selected textures assigned to the input slots. */
+    void OpenPackWithSelectedAssets(const FToolMenuContext& MenuContext);
+
+    /** Context menu action: opens the Unpack mode with the selected texture as the source. */
+    void OpenUnpackWithSelectedAsset(const FToolMenuContext& MenuContext);
+
+    /** Command list holding the "open the tool" action. Null in headless runs (no editor UI). */
+    TSharedPtr<FUICommandList> PluginCommands;
 
     /**
      * @brief Displays a notification toast in the editor.

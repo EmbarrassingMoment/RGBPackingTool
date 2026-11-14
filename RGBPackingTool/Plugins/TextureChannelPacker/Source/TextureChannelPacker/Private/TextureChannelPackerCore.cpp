@@ -1087,6 +1087,59 @@ FString MakeUnpackBaseName(const FString& SourceName, const TArray<FString>& Kno
     return BaseName;
 }
 
+TArray<int32> AssignNamesToPackSlots(const TArray<FString>& Names, const TArray<FString>& SlotSuffixes)
+{
+    TArray<int32> SlotToName;
+    SlotToName.Init(INDEX_NONE, 4);
+
+    TArray<bool> bNameAssigned;
+    bNameAssigned.Init(false, Names.Num());
+
+    // Pass 1: names that end with a slot suffix go to that slot.
+    for (int32 NameIndex = 0; NameIndex < Names.Num(); ++NameIndex)
+    {
+        int32 BestSlot = INDEX_NONE;
+        int32 BestLength = 0;
+        for (int32 SlotIndex = 0; SlotIndex < 4 && SlotIndex < SlotSuffixes.Num(); ++SlotIndex)
+        {
+            const FString& Suffix = SlotSuffixes[SlotIndex];
+            if (SlotToName[SlotIndex] == INDEX_NONE && Suffix.Len() > BestLength && Names[NameIndex].EndsWith(Suffix, ESearchCase::IgnoreCase))
+            {
+                BestSlot = SlotIndex;
+                BestLength = Suffix.Len();
+            }
+        }
+
+        if (BestSlot != INDEX_NONE)
+        {
+            SlotToName[BestSlot] = NameIndex;
+            bNameAssigned[NameIndex] = true;
+        }
+    }
+
+    // Pass 2: the rest fill the free slots in order.
+    int32 NextSlot = 0;
+    for (int32 NameIndex = 0; NameIndex < Names.Num(); ++NameIndex)
+    {
+        if (bNameAssigned[NameIndex])
+        {
+            continue;
+        }
+
+        while (NextSlot < 4 && SlotToName[NextSlot] != INDEX_NONE)
+        {
+            ++NextSlot;
+        }
+        if (NextSlot >= 4)
+        {
+            break;
+        }
+        SlotToName[NextSlot] = NameIndex;
+    }
+
+    return SlotToName;
+}
+
 // ========== Compression ==========
 
 TArray<FCompressionOption> GetCompressionOptions()

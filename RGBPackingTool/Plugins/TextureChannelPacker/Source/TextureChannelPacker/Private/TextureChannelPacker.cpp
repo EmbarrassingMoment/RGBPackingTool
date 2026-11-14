@@ -2,8 +2,12 @@
 #include "TextureChannelPackerShared.h"
 #include "TextureChannelPackerCore.h"
 #include "TextureChannelUnpacker.h"
+#include "TextureChannelPackerCommands.h"
 #include "UObject/StrongObjectPtr.h"
 #include "ToolMenus.h"
+#include "ContentBrowserMenuContexts.h"
+#include "Framework/Commands/UICommandList.h"
+#include "Interfaces/IMainFrameModule.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -207,35 +211,165 @@ void FTextureChannelPackerModule::StartupModule()
         .SetMenuType(ETabSpawnerMenuType::Hidden)
         .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Layout"));
 
-    // Menus are registered once ToolMenus is ready. ToolMenus does not run startup callbacks
-    // while its UI is disabled (e.g. in commandlets), so headless runs leave the menus alone.
+    // Commands and menus are registered once ToolMenus is ready. ToolMenus does not run startup
+    // callbacks while its UI is disabled (e.g. in commandlets), so headless runs leave the editor
+    // UI alone.
     UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FTextureChannelPackerModule::RegisterMenus));
+}
+
+void FTextureChannelPackerModule::RegisterCommands()
+{
+    FTextureChannelPackerCommands::Register();
+
+    PluginCommands = MakeShared<FUICommandList>();
+    PluginCommands->MapAction(
+        FTextureChannelPackerCommands::Get().OpenPluginWindow,
+        FExecuteAction::CreateRaw(this, &FTextureChannelPackerModule::OpenTab));
+
+    // The main frame's command list is processed by the level editor and by asset editors, so
+    // appending to it makes the shortcut work beyond the level editor window. Append keeps a
+    // weak reference, so the binding goes away when PluginCommands is released on shutdown.
+    IMainFrameModule& MainFrameModule = FModuleManager::LoadModuleChecked<IMainFrameModule>("MainFrame");
+    MainFrameModule.GetMainFrameCommandBindings()->Append(PluginCommands.ToSharedRef());
 }
 
 void FTextureChannelPackerModule::RegisterMenus()
 {
+    RegisterCommands();
+
     FToolMenuOwnerScoped OwnerScoped(this);
     UToolMenus* ToolMenus = UToolMenus::Get();
 
-    // Find the 'Tools' menu in the level editor main menu
-    UToolMenu* ToolsMenu = ToolMenus->ExtendMenu("LevelEditor.MainMenu.Tools");
+    // "MainFrame.MainMenu.Tools" is the parent of the Tools menu of every editor window (level
+    // editor and asset editors alike), so the entry is reachable wherever the user is working.
+    UToolMenu* ToolsMenu = ToolMenus->ExtendMenu("MainFrame.MainMenu.Tools");
 
     // Add a new section to the 'Tools' menu
     FToolMenuSection& Section = ToolsMenu->AddSection("TextureChannelPacker", LOCTEXT("TextureChannelPackerSection", "Texture Packing"));
 
-    // Add a new menu entry to the new section
-    Section.AddMenuEntry(
-        "PackTextures",
-        LOCTEXT("PackTexturesMenuEntry", "Texture Channel Packer"),
-        LOCTEXT("PackTexturesMenuEntryTooltip", "Opens the Texture Channel Packer tool."),
-        FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Layout"),
-        FUIAction(
-            FExecuteAction::CreateLambda([]()
+    // The entry is bound to the command, so the menu shows its current keyboard shortcut.
+    Section.AddMenuEntryWithCommandList(
+        FTextureChannelPackerCommands::Get().OpenPluginWindow,
+        PluginCommands,
+        TAttribute<FText>(),
+        TAttribute<FText>(),
+        FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Layout"));
+
+    // Content Browser: right-click on texture assets.
+    UToolMenu* AssetMenu = UE::ContentBrowser::ExtendToolMenu_AssetContextMenu(UTexture2D::StaticClass());
+    FToolMenuSection& AssetSection = AssetMenu->FindOrAddSection("GetAssetActions");
+    AssetSection.AddDynamicEntry(
+        "TextureChannelPacker",
+        FNewToolMenuSectionDelegate::CreateRaw(this, &FTextureChannelPackerModule::AddAssetContextMenuEntries));
+}
+
+void FTextureChannelPackerModule::AddAssetContextMenuEntries(FToolMenuSection& InSection)
+{
+    const UContentBrowserAssetContextMenuContext* Context = InSection.FindContext<UContentBrowserAssetContextMenuContext>();
+    if (!Context)
+    {
+        return;
+    }
+
+    const int32 NumSelected = Context->SelectedAssets.Num();
+    const FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "Icons.Layout");
+
+    // Pack takes one texture per output channel, so it is offered for up to four textures.
+    if (NumSelected >= 1 && NumSelected <= 4)
+    {
+        InSection.AddMenuEntry(
+            "TextureChannelPacker_Pack",
+            GetLocalizedMessage(TEXT("AssetMenuPackLabel"), TEXT("Pack with Texture Channel Packer"), TEXT("Texture Channel Packer でパック")),
+            GetLocalizedMessage(
+                TEXT("AssetMenuPackTooltip"),
+                TEXT("Opens the Texture Channel Packer with the selected textures as the pack inputs. Textures whose names end with a channel suffix of the current preset (e.g. _Roughness) go to that channel; the others fill the remaining channels in order."),
+                TEXT("選択したテクスチャをパックの入力に設定した状態で Texture Channel Packer を開きます。名前が現在のプリセットのチャンネルサフィックス（例: _Roughness）で終わるテクスチャはそのチャンネルに、それ以外は残りのチャンネルに順番に割り当てられます。")),
+            Icon,
+            FToolMenuExecuteAction::CreateRaw(this, &FTextureChannelPackerModule::OpenPackWithSelectedAssets));
+    }
+
+    // Unpack splits a single packed texture.
+    if (NumSelected == 1)
+    {
+        InSection.AddMenuEntry(
+            "TextureChannelPacker_Unpack",
+            GetLocalizedMessage(TEXT("AssetMenuUnpackLabel"), TEXT("Unpack with Texture Channel Packer"), TEXT("Texture Channel Packer でアンパック")),
+            GetLocalizedMessage(
+                TEXT("AssetMenuUnpackTooltip"),
+                TEXT("Opens the Texture Channel Packer in Unpack mode with the selected texture as the source."),
+                TEXT("選択したテクスチャをソースに設定した状態で、Texture Channel Packer をアンパックモードで開きます。")),
+            Icon,
+            FToolMenuExecuteAction::CreateRaw(this, &FTextureChannelPackerModule::OpenUnpackWithSelectedAsset));
+    }
+}
+
+/** Loads the Texture2D assets selected in the Content Browser menu that MenuContext belongs to. */
+static TArray<UTexture2D*> LoadSelectedTextures(const FToolMenuContext& MenuContext)
+{
+    TArray<UTexture2D*> Textures;
+    if (const UContentBrowserAssetContextMenuContext* Context = MenuContext.FindContext<UContentBrowserAssetContextMenuContext>())
+    {
+        for (const FAssetData& AssetData : Context->SelectedAssets)
+        {
+            if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
             {
-                FGlobalTabmanager::Get()->TryInvokeTab(TextureChannelPackerTabName);
-            })
-        )
-    );
+                Textures.Add(Texture);
+            }
+        }
+    }
+    return Textures;
+}
+
+void FTextureChannelPackerModule::OpenTab()
+{
+    FGlobalTabmanager::Get()->TryInvokeTab(TextureChannelPackerTabName);
+}
+
+void FTextureChannelPackerModule::OpenPackWithSelectedAssets(const FToolMenuContext& MenuContext)
+{
+    const TArray<UTexture2D*> Textures = LoadSelectedTextures(MenuContext);
+    if (Textures.Num() > 0)
+    {
+        TArray<FString> Names;
+        for (const UTexture2D* Texture : Textures)
+        {
+            Names.Add(Texture->GetName());
+        }
+
+        // The preset's unpack suffixes name what each channel holds (e.g. "_AO"), so they also
+        // tell which selected texture belongs to which input slot.
+        TArray<FString> SlotSuffixes;
+        if (CurrentPreset.IsValid())
+        {
+            SlotSuffixes = { CurrentPreset->UnpackSuffixR, CurrentPreset->UnpackSuffixG, CurrentPreset->UnpackSuffixB, CurrentPreset->UnpackSuffixA };
+        }
+
+        // The selection replaces all four inputs, so no texture from an earlier session stays behind.
+        const TArray<int32> SlotToTexture = TextureChannelPackerCore::AssignNamesToPackSlots(Names, SlotSuffixes);
+        TWeakObjectPtr<UTexture2D>* Slots[4] = { &InputTextureR, &InputTextureG, &InputTextureB, &InputTextureA };
+        for (int32 SlotIndex = 0; SlotIndex < 4; ++SlotIndex)
+        {
+            const int32 TextureIndex = SlotToTexture[SlotIndex];
+            *Slots[SlotIndex] = Textures.IsValidIndex(TextureIndex) ? Textures[TextureIndex] : nullptr;
+        }
+
+        AutoGenerateFileName();
+    }
+
+    ActiveTabIndex = 0;
+    OpenTab();
+}
+
+void FTextureChannelPackerModule::OpenUnpackWithSelectedAsset(const FToolMenuContext& MenuContext)
+{
+    const TArray<UTexture2D*> Textures = LoadSelectedTextures(MenuContext);
+    if (Textures.Num() > 0 && Unpacker.IsValid())
+    {
+        Unpacker->SetSourceTexture(Textures[0]);
+    }
+
+    ActiveTabIndex = 1;
+    OpenTab();
 }
 
 void FTextureChannelPackerModule::ShutdownModule()
@@ -245,6 +379,10 @@ void FTextureChannelPackerModule::ShutdownModule()
     UToolMenus::UnRegisterStartupCallback(this);
     UToolMenus::UnregisterOwner(this);
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TextureChannelPackerTabName);
+
+    // Dropping the command list removes the shortcut from the main frame (it holds a weak reference).
+    PluginCommands.Reset();
+    FTextureChannelPackerCommands::Unregister();
 
     // Release preview resources.
     if (PreviewBrush.IsValid())

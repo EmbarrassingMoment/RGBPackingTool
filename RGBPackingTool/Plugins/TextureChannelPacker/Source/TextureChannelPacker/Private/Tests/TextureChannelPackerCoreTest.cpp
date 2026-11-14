@@ -310,6 +310,23 @@ bool FTextureChannelPackerCoreValidationTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Package name adds one slash"), MakePackageName(TEXT("/Game/Rock"), TEXT("T_X")), FString(TEXT("/Game/Rock/T_X")));
     TestEqual(TEXT("Package name keeps an existing slash"), MakePackageName(TEXT("/Game/Rock/"), TEXT("T_X")), FString(TEXT("/Game/Rock/T_X")));
 
+    // Slot assignment for textures sent from the Content Browser context menu.
+    {
+        const TArray<FString> OrmSuffixes = { TEXT("_AO"), TEXT("_Roughness"), TEXT("_Metallic"), TEXT("_A") };
+        TestTrue(TEXT("Slots follow the name suffixes, not the selection order"),
+            AssignNamesToPackSlots({ TEXT("T_Rock_Metallic"), TEXT("T_Rock_roughness"), TEXT("T_Rock_AO") }, OrmSuffixes)
+                == TArray<int32>({ 2, 1, 0, INDEX_NONE }));
+        TestTrue(TEXT("Unmatched names fill the free slots in order"),
+            AssignNamesToPackSlots({ TEXT("T_Rock_Height"), TEXT("T_Rock_Roughness"), TEXT("T_Rock_Mask") }, OrmSuffixes)
+                == TArray<int32>({ 0, 1, 2, INDEX_NONE }));
+        TestTrue(TEXT("A slot is taken once"),
+            AssignNamesToPackSlots({ TEXT("T_A_AO"), TEXT("T_B_AO") }, OrmSuffixes)
+                == TArray<int32>({ 0, 1, INDEX_NONE, INDEX_NONE }));
+        TestTrue(TEXT("Names beyond four are ignored"),
+            AssignNamesToPackSlots({ TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E") }, TArray<FString>())
+                == TArray<int32>({ 0, 1, 2, 3 }));
+    }
+
     return true;
 }
 

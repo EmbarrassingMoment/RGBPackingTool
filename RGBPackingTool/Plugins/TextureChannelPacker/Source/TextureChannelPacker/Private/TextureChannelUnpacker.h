@@ -52,6 +52,13 @@ public:
     /** Releases preview textures and brushes. Called on module shutdown. */
     void ReleaseResources();
 
+    /**
+     * @brief Selects the texture to unpack, exactly as if the user had picked it in the source picker.
+     *
+     * Used by the Content Browser context menu. Updates the naming and rebuilds the channel preview.
+     */
+    void SetSourceTexture(UTexture2D* NewTexture);
+
 private:
     /**
      * @brief Handles the 'Unpack Textures' button click event.

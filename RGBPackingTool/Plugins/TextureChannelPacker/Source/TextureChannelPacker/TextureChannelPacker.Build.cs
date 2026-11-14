@@ -37,6 +37,8 @@ public class TextureChannelPacker : ModuleRules
                 "InputCore",
                 "UnrealEd",
                 "ToolMenus",
+                // IMainFrameModule: its command list carries the tool's keyboard shortcut.
+                "MainFrame",
                 "PropertyEditor",
                 "ImageCore",
                 "RenderCore",

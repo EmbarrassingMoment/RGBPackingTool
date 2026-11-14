@@ -70,6 +70,19 @@ namespace TextureChannelPackerCore
      */
     FString MakeUnpackBaseName(const FString& SourceName, const TArray<FString>& KnownPackedSuffixes);
 
+    /**
+     * @brief Chooses the pack input slot (R, G, B, A) for textures handed to the tool together.
+     *
+     * A name that ends with a slot's suffix (e.g. "_Roughness", case-insensitive) takes that slot;
+     * names are visited in order, the longest matching suffix wins and each slot is taken once.
+     * The names left over fill the slots still free, in order. Names beyond four are ignored.
+     *
+     * @param Names Texture names, in selection order.
+     * @param SlotSuffixes Suffix per slot (R, G, B, A). Missing or empty entries never match.
+     * @return Four entries (R, G, B, A): the index into Names for that slot, or INDEX_NONE if empty.
+     */
+    TArray<int32> AssignNamesToPackSlots(const TArray<FString>& Names, const TArray<FString>& SlotSuffixes);
+
     // ========== Compression ==========
 
     /** The compression options offered by the tool, in UI order ("Masks", "Grayscale", "Default"). */

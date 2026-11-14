@@ -14,7 +14,9 @@
 ## 2. Step-by-Step Workflow
 
 ### Step 1: Open the Tool
-Go to **Tools > Texture Channel Packer**.
+Go to **Tools > Texture Channel Packer**, or press `Ctrl+Alt+R`.
+
+You can also right-click textures in the Content Browser and choose **Pack with Texture Channel Packer** (or **Unpack with Texture Channel Packer**) to open the tool with those textures already assigned.
 
 ### Step 2: Pick a Preset (Optional)
 Choose a **Preset** from the dropdown at the top to set channel labels, filename suffix, compression, and invert defaults in one click.

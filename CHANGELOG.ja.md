@@ -7,6 +7,15 @@
 このフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいており、
 このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
+## [Unreleased]
+
+### 追加 (Added)
+- **キーボードショートカット**: `Ctrl+Alt+R`（Mac では `Cmd+Option+R`）でツールを開けます。「ツール」メニューの項目の横に表示され、エディタの環境設定 > キーボードショートカット（「Texture Channel Packer」）で変更できます。
+- **コンテンツブラウザの右クリックメニュー**: テクスチャアセットを右クリックすると、**Texture Channel Packer でパック**（1〜4 枚選択時。選択したテクスチャがパックの入力になり、`_Roughness` など現在のプリセットのチャンネルサフィックスに従ってチャンネルに割り当てられます）と **Texture Channel Packer でアンパック**（1 枚選択時。そのテクスチャがアンパックのソースになります）を選べます。
+
+### 変更 (Changed)
+- **Tools (ツール) > Texture Channel Packer** の項目が、レベルエディタだけでなく各アセットエディタウィンドウの「ツール」メニューにも表示されるようになりました。
+
 ## [1.9.0] - 2026-10-17
 
 ### 追加 (Added)
