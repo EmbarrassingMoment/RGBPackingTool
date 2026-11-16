@@ -5,9 +5,10 @@ Unreal Engine project that has the **Texture Channel Packer** plugin installed. 
 next to it only imports this file. If your tool does not pick this file up on its own, point it here (for example
 with one line in your project's own `AGENTS.md` / `CLAUDE.md`).
 
-If this folder sits inside a checkout of the plugin's own repository (RGBPackingTool, with `Source/` and a sibling
-`AGENTS.md` one level up in `RGBPackingTool/`), you are developing the plugin itself: follow that repository-level
-file instead, and ignore the "Do not" section below, which is written for installed copies.
+Only if `../../RGBPackingTool.uproject` exists are you in a checkout of the plugin's own repository (this folder is
+then `RGBPackingTool/Plugins/TextureChannelPacker`): you are developing the plugin itself, so follow the `CLAUDE.md`
+at the repository root (`../../../CLAUDE.md`) instead and ignore the "Do not" section below, which is written for
+installed copies. Any other project, even one with its own `Source/` folder and `AGENTS.md`, has an installed copy.
 
 ## What the plugin does
 
